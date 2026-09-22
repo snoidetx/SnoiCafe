@@ -93,8 +93,9 @@ export const en = {
   cancelConfirm: 'Cancel this request?',
   deleteRequest: 'Delete',
   deleteRequestConfirm:
-    'Permanently delete “{name}” from the wishlist? It won’t appear in History. This cannot be undone.',
-  requestDeleted: 'Deleted from the wishlist.',
+    'Permanently delete “{name}”? No record will remain in Wishlist or History. This cannot be undone.',
+  requestDeleted: 'Request deleted.',
+  request_not_deletable: 'Completed requests cannot be deleted. Refresh to see the latest status.',
   request_not_pending:
     'This request has already moved to History. Refresh to see its latest status.',
   customWish: 'New dish wish',
@@ -323,8 +324,9 @@ export const zh: Record<TranslationKey, string> = {
   cancelRequest: '取消心愿',
   cancelConfirm: '确定取消这个心愿吗？',
   deleteRequest: '删除',
-  deleteRequestConfirm: '确定永久删除心愿单中的“{name}”吗？它不会出现在历史中，删除后无法恢复。',
-  requestDeleted: '已从心愿单删除。',
+  deleteRequestConfirm: '确定永久删除“{name}”吗？心愿单和历史中都不再保留记录，删除后无法恢复。',
+  requestDeleted: '已删除该条心愿。',
+  request_not_deletable: '已完成的心愿不能删除，请刷新查看最新状态。',
   request_not_pending: '这条心愿已移到历史中，请刷新查看最新状态。',
   customWish: '新菜心愿',
   menuOrder: '菜单点单',

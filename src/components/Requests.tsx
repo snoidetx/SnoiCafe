@@ -41,7 +41,7 @@ export function Requests({
     }
   }
   async function remove(r: FoodRequest) {
-    if (!chef || disabled || busy || r.status !== 'pending') return
+    if (!chef || disabled || busy || !['pending', 'cancelled'].includes(r.status)) return
     if (!window.confirm(t('deleteRequestConfirm', { name: localized(r, language) }))) return
     setBusy(r.id)
     try {
@@ -116,7 +116,7 @@ export function Requests({
                   }).format(new Date(r.created_at))}
                 </time>
                 <div>
-                  {chef && r.status === 'pending' && (
+                  {chef && (r.status === 'pending' || r.status === 'cancelled') && (
                     <button
                       className="text-button danger"
                       aria-label={`${t('deleteRequest')} ${localized(r, language)}`}

@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { Requests } from '../src/components/Requests'
-import type { FoodRequest, Member } from '../src/types'
+import type { FoodRequest, Member, Status } from '../src/types'
 
 const request: FoodRequest = {
   id: 'request',
@@ -29,12 +29,12 @@ const member: Member = {
   role: 'customer',
   customer_profile_id: 'alex',
 }
-const render = (chef: boolean, history = false) =>
+const render = (chef: boolean, status: Status = 'pending') =>
   renderToStaticMarkup(
     createElement(Requests, {
-      requests: [{ ...request, status: history ? 'completed' : 'pending' }],
+      requests: [{ ...request, status }],
       chef,
-      history,
+      history: status !== 'pending',
       member,
       disabled: false,
       onStatus: async () => {},
@@ -50,10 +50,15 @@ describe('wishlist actions', () => {
     expect(markup).toContain('Cancel request')
     expect(markup).toContain('Served!')
   })
-  it('retains customer cancellation without exposing deletion, and protects history', () => {
+  it('offers deletion for cancelled history only to chefs', () => {
+    expect(render(true, 'cancelled')).toContain('aria-label="Delete Dumplings"')
+    expect(render(true, 'cancelled')).not.toContain('Cancel request')
+    expect(render(false, 'cancelled')).not.toContain('aria-label="Delete')
+  })
+  it('retains customer cancellation without exposing deletion, and protects completed history', () => {
     expect(render(false)).toContain('Cancel request')
     expect(render(false)).not.toContain('aria-label="Delete')
-    expect(render(true, true)).not.toContain('aria-label="Delete')
-    expect(render(true, true)).toContain('Undo completion')
+    expect(render(true, 'completed')).not.toContain('aria-label="Delete')
+    expect(render(true, 'completed')).toContain('Undo completion')
   })
 })
