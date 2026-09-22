@@ -10,6 +10,17 @@ const credentialMigration = readFileSync(
   new URL('../supabase/migrations/202609220002_unrestricted_credentials.sql', import.meta.url),
   'utf8',
 )
+const profileMigration = readFileSync(
+  new URL('../supabase/migrations/202609220003_chef_profiles.sql', import.meta.url),
+  'utf8',
+)
+let upgraded: {
+  profiles: number
+  sessions: number
+  distinctProfiles: number
+  requestName: string
+  stable: boolean
+}
 const chef = randomUUID(),
   guest = randomUUID(),
   other = randomUUID(),
@@ -27,11 +38,11 @@ async function asUser<T>(id: string, run: () => Promise<T>): Promise<T> {
     await db.query("select set_config('request.jwt.claim.sub','',false)")
   }
 }
-async function unlock(id: string, value = code, isChef = false) {
+async function unlock(id: string, value = code, isChef = false, name = 'Family') {
   return asUser(id, async () => {
     const r = await db.query<{ result: { ok?: boolean; error?: string } }>(
       'select public.unlock_kitchen($1,$2,$3) result',
-      [value, 'Family', isChef],
+      [value, name, isChef],
     )
     return r.rows[0].result
   })
@@ -76,10 +87,37 @@ beforeAll(async () => {
   // Upgrade a populated installation, then prove the update can be re-run safely.
   await db.exec(credentialMigration)
   await db.exec(credentialMigration)
+  await db.query(
+    "insert into public.members(kitchen_id,user_id,display_name,role) values($1,$2,'Snoi','chef'),($1,$3,' snoi ','chef')",
+    [kitchen, chef, stranger],
+  )
+  const oldRequest = await order(chef, randomUUID(), {}, null)
+  await db.exec(profileMigration)
+  const profiles = (
+    await db.query<{ id: string }>('select id from public.chef_profiles order by id')
+  ).rows
+  await db.exec(profileMigration)
+  const sessions = (
+    await db.query<{ chef_profile_id: string }>('select chef_profile_id from public.members')
+  ).rows
+  upgraded = {
+    profiles: profiles.length,
+    sessions: sessions.length,
+    distinctProfiles: new Set(sessions.map((m) => m.chef_profile_id)).size,
+    requestName: (
+      await db.query<{ customer_name: string }>(
+        'select customer_name from public.requests where id=$1',
+        [oldRequest.id],
+      )
+    ).rows[0].customer_name,
+    stable:
+      JSON.stringify(profiles) ===
+      JSON.stringify((await db.query('select id from public.chef_profiles order by id')).rows),
+  }
 }, 30000)
 beforeEach(async () => {
   await db.exec(
-    'delete from public.requests;delete from public.dishes;delete from public.categories;delete from public.members;delete from storage.objects;delete from private.unlock_attempts;',
+    'delete from public.requests;delete from public.dishes;delete from public.categories;delete from public.members;delete from public.chef_profiles;delete from storage.objects;delete from private.unlock_attempts;',
   )
   await db.query(
     "update private.access_secrets set kitchen_hash=extensions.crypt($1,extensions.gen_salt('bf',4)),chef_hash=extensions.crypt($2,extensions.gen_salt('bf',4))",
@@ -90,7 +128,10 @@ beforeEach(async () => {
     [guest, 'customer'],
     [other, 'customer'],
   ])
-    await db.query('insert into public.members values($1,$2,$3,$4)', [kitchen, id, role, role])
+    await db.query(
+      'insert into public.members(kitchen_id,user_id,display_name,role) values($1,$2,$3,$4)',
+      [kitchen, id, role, role],
+    )
   category = randomUUID()
   dish = randomUUID()
   await db.query("insert into public.categories(id,kitchen_id,name) values($1,$2,'Chinese')", [
@@ -143,10 +184,10 @@ describe('private kitchen access', () => {
         db.query("update public.members set role='chef' where user_id=$1", [stranger]),
       ).rejects.toThrow(/permission denied/)
       await expect(
-        db.query("insert into public.members values($1,$2,'Imposter','chef')", [
-          kitchen,
-          randomUUID(),
-        ]),
+        db.query(
+          "insert into public.members(kitchen_id,user_id,display_name,role) values($1,$2,'Imposter','chef')",
+          [kitchen, randomUUID()],
+        ),
       ).rejects.toThrow(/permission denied/)
       await expect(
         db.query("insert into public.dishes(kitchen_id,name,photo_path) values($1,'Fake',$2)", [
@@ -236,6 +277,124 @@ describe('private kitchen access', () => {
       await expect(
         db.query('select public.change_access_codes($1,null)', ['new-private-chef-password']),
       ).rejects.toThrow('different_codes')
+    })
+  })
+})
+describe('family chef profiles', () => {
+  it('upgrades duplicate names without removing sessions or order snapshots and is safe to rerun', () => {
+    expect(upgraded).toEqual({
+      profiles: 1,
+      sessions: 2,
+      distinctProfiles: 1,
+      requestName: 'Snoi',
+      stable: true,
+    })
+  })
+  it('reuses a chef name across devices while keeping different names distinct', async () => {
+    expect(await unlock(guest, code, true, 'Snoi')).toEqual({ error: 'invalid_code' })
+    expect(await unlock(guest, password, true, 'Snoi')).toEqual({ ok: true })
+    expect(await unlock(stranger, password, true, '  sNOI  ')).toEqual({ ok: true })
+    expect(await unlock(other, password, true, 'Grandma')).toEqual({ ok: true })
+    expect(await unlock(guest, password, true, 'Snoi')).toEqual({ ok: true })
+    const sessions = (
+      await db.query<{ user_id: string; chef_profile_id: string; display_name: string }>(
+        'select * from public.members',
+      )
+    ).rows
+    const first = sessions.find((m) => m.user_id === guest)!,
+      second = sessions.find((m) => m.user_id === stranger)!,
+      third = sessions.find((m) => m.user_id === other)!
+    expect(first.chef_profile_id).toBe(second.chef_profile_id)
+    expect(first.display_name).toBe(second.display_name)
+    expect(first.chef_profile_id).not.toBe(third.chef_profile_id)
+    expect((await db.query('select * from public.chef_profiles')).rows).toHaveLength(3)
+    for (const id of [guest, stranger, other])
+      await asUser(id, async () =>
+        expect((await db.query('select * from public.dishes')).rows).toHaveLength(1),
+      )
+  })
+  it('keeps the profile when all its device memberships are ended', async () => {
+    await unlock(stranger, password, true, 'Snoi')
+    const profile = (
+      await db.query<{ chef_profile_id: string }>(
+        'select chef_profile_id from public.members where user_id=$1',
+        [stranger],
+      )
+    ).rows[0].chef_profile_id
+    await asUser(chef, () => db.query('select public.remove_member($1)', [stranger]))
+    expect(
+      (await db.query('select * from public.chef_profiles where id=$1', [profile])).rows,
+    ).toHaveLength(1)
+    await unlock(guest, password, true, 'Snoi')
+    expect(
+      (
+        await db.query<{ chef_profile_id: string }>(
+          'select chef_profile_id from public.members where user_id=$1',
+          [guest],
+        )
+      ).rows[0].chef_profile_id,
+    ).toBe(profile)
+  })
+  it('renames one profile across its devices without changing historical request names', async () => {
+    await unlock(stranger, password, true, 'chef')
+    const request = await order(chef, randomUUID(), {}, null)
+    await asUser(chef, () => db.query("select public.set_display_name('Snoi')"))
+    expect(
+      (
+        await db.query<{ display_name: string }>(
+          "select display_name from public.members where role='chef'",
+        )
+      ).rows.map((m) => m.display_name),
+    ).toEqual(['Snoi', 'Snoi'])
+    expect(
+      (
+        await db.query<{ customer_name: string }>(
+          'select customer_name from public.requests where id=$1',
+          [request.id],
+        )
+      ).rows[0].customer_name,
+    ).toBe('chef')
+    await unlock(other, password, true, ' snoi ')
+    expect((await db.query('select * from public.chef_profiles')).rows).toHaveLength(1)
+    await asUser(guest, () => db.query("select public.set_display_name('Alex')"))
+    expect(
+      (
+        await db.query<{ display_name: string }>(
+          'select display_name from public.members where user_id=$1',
+          [guest],
+        )
+      ).rows[0].display_name,
+    ).toBe('Alex')
+  })
+  it('prevents taking another profile by renaming or assigning its identity directly', async () => {
+    await unlock(stranger, password, true, 'Grandma')
+    await asUser(chef, async () => {
+      await expect(db.query("select public.set_display_name(' GRANDMA ')")).rejects.toThrow(
+        'chef_name_taken',
+      )
+      expect(
+        (
+          await db.query(
+            "update public.chef_profiles set display_name='Changed' where display_name='Grandma' returning id",
+          )
+        ).rows,
+      ).toHaveLength(0)
+      await expect(
+        db.query('update public.members set chef_profile_id=null where user_id=$1', [chef]),
+      ).rejects.toThrow(/permission denied/)
+    })
+    await asUser(guest, async () => {
+      expect(
+        (await db.query("update public.chef_profiles set display_name='Fake' returning id")).rows,
+      ).toHaveLength(0)
+      await expect(
+        db.query("select private.ensure_chef_profile($1,'Fake')", [kitchen]),
+      ).rejects.toThrow(/permission denied/)
+      await expect(
+        db.query("insert into public.chef_profiles(kitchen_id,display_name) values($1,'Fake')", [
+          kitchen,
+        ]),
+      ).rejects.toThrow(/permission denied/)
     })
   })
 })

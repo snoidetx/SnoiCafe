@@ -11,6 +11,12 @@ export interface Member {
   user_id: string
   display_name: string
   role: 'chef' | 'customer'
+  chef_profile_id?: string | null
+}
+export interface ChefProfile {
+  id: string
+  kitchen_id: string
+  display_name: string
 }
 export interface Category {
   id: string
@@ -59,6 +65,7 @@ export interface FoodRequest {
 export interface KitchenData {
   kitchen: Kitchen
   members: Member[]
+  chef_profiles?: ChefProfile[]
   categories: Category[]
   dishes: Dish[]
   requests: FoodRequest[]

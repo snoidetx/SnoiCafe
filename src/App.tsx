@@ -14,6 +14,7 @@ import {
 import { I18nContext, errorKey, useI18n } from './i18n'
 import type { Dish, KitchenData, Language, Repository, Status, Tab } from './types'
 import { supabase } from './lib/supabase'
+import { kitchenPeople } from './lib/domain'
 import { Auth } from './components/Auth'
 import { Menu } from './components/Menu'
 import { Requests } from './components/Requests'
@@ -261,7 +262,7 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
                 <h1>{data.kitchen.name}</h1>
                 <p>
                   <Users size={13} />
-                  {t('members', { n: data.members.length })}
+                  {t('members', { n: kitchenPeople(data).length })}
                   <span className="dot">·</span>
                   {me?.display_name}{' '}
                   <span className="role-label">{t(chef ? 'chef' : 'customer')}</span>

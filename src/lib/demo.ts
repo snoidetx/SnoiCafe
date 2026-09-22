@@ -214,8 +214,27 @@ export function createDemoRepository(getUser: () => string): Repository {
       persist()
     },
     async saveName(userId, name) {
+      if (userId !== getUser()) throw new Error('not_allowed')
+      const current = data.members.find((m) => m.user_id === userId)
+      const identity = (m: typeof current) => m?.display_name.trim().toLowerCase()
+      if (
+        current?.role === 'chef' &&
+        data.members.some(
+          (m) =>
+            m.role === 'chef' &&
+            identity(m) !== identity(current) &&
+            identity(m) === name.trim().toLowerCase(),
+        )
+      )
+        throw new Error('chef_name_taken')
       data.members = data.members.map((m) =>
-        m.user_id === userId ? { ...m, display_name: name } : m,
+        (
+          current?.role === 'chef'
+            ? m.role === 'chef' && identity(m) === identity(current)
+            : m.user_id === userId
+        )
+          ? { ...m, display_name: name }
+          : m,
       )
       persist()
     },

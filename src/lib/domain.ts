@@ -1,4 +1,4 @@
-import type { Category, Dish, DishOption, Language } from '../types'
+import type { Category, Dish, DishOption, KitchenData, Language, Member } from '../types'
 export function localized(item: { name: string; name_zh?: string }, language: Language) {
   return language === 'zh' && item.name_zh ? item.name_zh : item.name
 }
@@ -77,4 +77,39 @@ export async function preparePhoto(file: File): Promise<Blob> {
   )
   if (blob.size > 2 * 1024 * 1024) throw new Error('invalidPhoto')
   return blob
+}
+
+// Chef names identify family profiles; device memberships only control access.
+// Customer sessions stay separate: a matching nickname does not transfer orders.
+export function kitchenPeople(data: KitchenData) {
+  const chefs = data.members.filter((m) => m.role === 'chef')
+  const profileKey = (m: Member) => m.chef_profile_id || m.display_name.trim().toLowerCase()
+  const profiles = data.chef_profiles || [
+    ...new Map(
+      chefs.map((m) => [
+        profileKey(m),
+        {
+          id: profileKey(m),
+          kitchen_id: m.kitchen_id,
+          display_name: m.display_name,
+        },
+      ]),
+    ).values(),
+  ]
+  return [
+    ...profiles.map((p) => ({
+      id: p.id,
+      display_name: p.display_name,
+      role: 'chef' as const,
+      sessions: chefs.filter((m) => profileKey(m) === p.id),
+    })),
+    ...data.members
+      .filter((m) => m.role === 'customer')
+      .map((m) => ({
+        id: m.user_id,
+        display_name: m.display_name,
+        role: m.role,
+        sessions: [m],
+      })),
+  ]
 }

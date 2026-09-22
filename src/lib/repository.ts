@@ -1,5 +1,6 @@
 import type {
   Category,
+  ChefProfile,
   Dish,
   FoodRequest,
   Kitchen,
@@ -38,15 +39,17 @@ export function createRepository(): Repository {
     async load(userId) {
       const kitchen = check(await db.from('kitchens').select('*').maybeSingle()) as Kitchen | null
       if (!kitchen) return null
-      const [members, categories, dishes, requests] = await Promise.all([
+      const [members, categories, dishes, requests, chef_profiles] = await Promise.all([
         rows<Member>('members', kitchen.id),
         rows<Category>('categories', kitchen.id),
         rows<Dish>('dishes', kitchen.id),
         rows<FoodRequest>('requests', kitchen.id),
+        rows<ChefProfile>('chef_profiles', kitchen.id),
       ])
       return {
         kitchen,
         members,
+        chef_profiles,
         categories,
         dishes,
         requests: requests.sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -120,7 +123,7 @@ export function createRepository(): Repository {
       )
     },
     async saveName(userId, name) {
-      check(await db.from('members').update({ display_name: name }).eq('user_id', userId))
+      check(await db.rpc('set_display_name', { p_name: name }))
     },
     async exportData() {
       const auth = await db.auth.getUser()
