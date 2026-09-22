@@ -14,6 +14,22 @@ const profileMigration = readFileSync(
   new URL('../supabase/migrations/202609220003_chef_profiles.sql', import.meta.url),
   'utf8',
 )
+const customerMigration = readFileSync(
+  new URL('../supabase/migrations/202609220004_customer_profiles.sql', import.meta.url),
+  'utf8',
+)
+const languageMigration = readFileSync(
+  new URL('../supabase/migrations/202609220005_language_preferences.sql', import.meta.url),
+  'utf8',
+)
+let upgradedCustomers: {
+  profiles: number
+  distinctProfiles: number
+  linked: boolean
+  chefUnlinked: boolean
+  snapshot: string
+  stable: boolean
+}
 let upgraded: {
   profiles: number
   sessions: number
@@ -114,23 +130,61 @@ beforeAll(async () => {
       JSON.stringify(profiles) ===
       JSON.stringify((await db.query('select id from public.chef_profiles order by id')).rows),
   }
+  await db.query(
+    "insert into public.members(kitchen_id,user_id,display_name,role) values($1,$2,'Alex','customer'),($1,$3,' alex ','customer')",
+    [kitchen, guest, other],
+  )
+  const oldCustomerRequest = await order(guest, randomUUID(), {}, null)
+  await db.exec(customerMigration)
+  const customerProfiles = (await db.query('select id from public.customer_profiles order by id'))
+    .rows
+  await db.exec(customerMigration)
+  const customerSessions = (
+    await db.query<{ customer_profile_id: string }>(
+      "select customer_profile_id from public.members where role='customer'",
+    )
+  ).rows
+  const oldCustomer = (
+    await db.query<{ customer_profile_id: string; customer_name: string }>(
+      'select customer_profile_id,customer_name from public.requests where id=$1',
+      [oldCustomerRequest.id],
+    )
+  ).rows[0]
+  upgradedCustomers = {
+    profiles: customerProfiles.length,
+    distinctProfiles: new Set(customerSessions.map((m) => m.customer_profile_id)).size,
+    linked: oldCustomer.customer_profile_id === customerSessions[0].customer_profile_id,
+    chefUnlinked:
+      (
+        await db.query<{ customer_profile_id: string | null }>(
+          'select customer_profile_id from public.requests where id=$1',
+          [oldRequest.id],
+        )
+      ).rows[0].customer_profile_id === null,
+    snapshot: oldCustomer.customer_name,
+    stable:
+      JSON.stringify(customerProfiles) ===
+      JSON.stringify((await db.query('select id from public.customer_profiles order by id')).rows),
+  }
+  await db.exec(languageMigration)
+  await db.exec(languageMigration)
 }, 30000)
 beforeEach(async () => {
   await db.exec(
-    'delete from public.requests;delete from public.dishes;delete from public.categories;delete from public.members;delete from public.chef_profiles;delete from storage.objects;delete from private.unlock_attempts;',
+    'delete from public.requests;delete from public.dishes;delete from public.categories;delete from public.members;delete from public.chef_profiles;delete from public.customer_profiles;delete from storage.objects;delete from private.unlock_attempts;',
   )
   await db.query(
     "update private.access_secrets set kitchen_hash=extensions.crypt($1,extensions.gen_salt('bf',4)),chef_hash=extensions.crypt($2,extensions.gen_salt('bf',4))",
     [code, password],
   )
-  for (const [id, role] of [
-    [chef, 'chef'],
-    [guest, 'customer'],
-    [other, 'customer'],
+  for (const [id, role, name] of [
+    [chef, 'chef', 'chef'],
+    [guest, 'customer', 'Alex'],
+    [other, 'customer', 'Blair'],
   ])
     await db.query(
       'insert into public.members(kitchen_id,user_id,display_name,role) values($1,$2,$3,$4)',
-      [kitchen, id, role, role],
+      [kitchen, id, name, role],
     )
   category = randomUUID()
   dish = randomUUID()
@@ -153,7 +207,15 @@ afterAll(async () => {
 describe('private kitchen access', () => {
   it('hides menu, members, history, and photos until the code is verified', async () => {
     await asUser(stranger, async () => {
-      for (const table of ['kitchens', 'members', 'categories', 'dishes', 'requests'])
+      for (const table of [
+        'kitchens',
+        'members',
+        'categories',
+        'dishes',
+        'requests',
+        'chef_profiles',
+        'customer_profiles',
+      ])
         expect((await db.query(`select * from public.${table}`)).rows).toHaveLength(0)
       expect((await db.query('select * from storage.objects')).rows).toHaveLength(0)
       await expect(db.query('select * from private.access_secrets')).rejects.toThrow(
@@ -398,6 +460,167 @@ describe('family chef profiles', () => {
     })
   })
 })
+describe('family customer profiles', () => {
+  it('merges legacy names, links matching customer orders, preserves chef orders, and is rerunnable', () => {
+    expect(upgradedCustomers).toEqual({
+      profiles: 1,
+      distinctProfiles: 1,
+      linked: true,
+      chefUnlinked: true,
+      snapshot: 'Alex',
+      stable: true,
+    })
+  })
+  it('reuses a customer profile and its menu orders and freeform wishes across devices', async () => {
+    const request = await order(),
+      wish = await order(guest, randomUUID(), {}, null)
+    expect(await unlock(stranger, 'incorrect', false, 'Alex')).toEqual({ error: 'invalid_code' })
+    expect(await unlock(stranger, code, false, ' aLeX ')).toEqual({ ok: true })
+    const identities = (
+      await db.query<{ customer_profile_id: string }>(
+        'select customer_profile_id from public.members where user_id in ($1,$2)',
+        [guest, stranger],
+      )
+    ).rows
+    expect(identities[0].customer_profile_id).toBe(identities[1].customer_profile_id)
+    expect((await db.query('select * from public.customer_profiles')).rows).toHaveLength(2)
+    await asUser(
+      other,
+      async () =>
+        await expect(
+          db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+        ).rejects.toThrow('not_allowed'),
+    )
+    await asUser(stranger, async () => {
+      await expect(
+        db.query('select public.set_request_status($1,$2)', [request.id, 'completed']),
+      ).rejects.toThrow('not_allowed')
+      for (const r of [request, wish])
+        await db.query('select public.set_request_status($1,$2)', [r.id, 'cancelled'])
+    })
+  })
+  it('preserves the profile and order access through ended sessions and code rotation', async () => {
+    const request = await order()
+    const profile = (
+      await db.query<{ customer_profile_id: string }>(
+        'select customer_profile_id from public.members where user_id=$1',
+        [guest],
+      )
+    ).rows[0].customer_profile_id
+    await asUser(chef, () => db.query('select public.remove_member($1)', [guest]))
+    await asUser(
+      guest,
+      async () =>
+        await expect(
+          db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+        ).rejects.toThrow('not_member'),
+    )
+    await asUser(chef, () => db.query("select public.change_access_codes('new-code',null)"))
+    expect(await unlock(stranger, code, false, 'Alex')).toEqual({ error: 'invalid_code' })
+    expect(await unlock(stranger, 'new-code', false, 'Alex')).toEqual({ ok: true })
+    expect(
+      (
+        await db.query<{ customer_profile_id: string }>(
+          'select customer_profile_id from public.members where user_id=$1',
+          [stranger],
+        )
+      ).rows[0].customer_profile_id,
+    ).toBe(profile)
+    await asUser(stranger, () =>
+      db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+    )
+  })
+  it('renames all devices but keeps request ownership and recorded names stable', async () => {
+    const request = await order()
+    await unlock(stranger, code, false, 'Alex')
+    await asUser(guest, () => db.query("select public.set_display_name('Sunny')"))
+    expect(
+      (
+        await db.query<{ display_name: string }>(
+          'select display_name from public.members where user_id in ($1,$2)',
+          [guest, stranger],
+        )
+      ).rows.map((m) => m.display_name),
+    ).toEqual(['Sunny', 'Sunny'])
+    expect(
+      (
+        await db.query<{ customer_name: string }>(
+          'select customer_name from public.requests where id=$1',
+          [request.id],
+        )
+      ).rows[0].customer_name,
+    ).toBe('Alex')
+    // Reusing the old name creates a new profile; even the original device loses
+    // ownership if it chooses that new identity instead of its renamed profile.
+    await unlock(guest, code, false, 'Alex')
+    await asUser(
+      guest,
+      async () =>
+        await expect(
+          db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+        ).rejects.toThrow('not_allowed'),
+    )
+    await db.exec(customerMigration)
+    await db.exec(languageMigration) // Replay later migrations after rerunning an earlier one.
+    await asUser(
+      guest,
+      async () =>
+        await expect(
+          db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+        ).rejects.toThrow('not_allowed'),
+    )
+    await asUser(stranger, () =>
+      db.query('select public.set_request_status($1,$2)', [request.id, 'cancelled']),
+    )
+  })
+  it('keeps customer names separate from chef identities and protects profile ownership', async () => {
+    expect(await unlock(stranger, code, true, 'chef')).toEqual({ error: 'invalid_code' })
+    expect(await unlock(stranger, code, false, 'chef')).toEqual({ ok: true })
+    expect(
+      (
+        await db.query<{ role: string; chef_profile_id: null }>(
+          'select role,chef_profile_id from public.members where user_id=$1',
+          [stranger],
+        )
+      ).rows[0],
+    ).toEqual({ role: 'customer', chef_profile_id: null })
+    await asUser(stranger, async () => {
+      expect((await db.query('update public.dishes set price=1 returning id')).rows).toHaveLength(0)
+      await expect(db.query("select public.change_access_codes('fake',null)")).rejects.toThrow(
+        'not_allowed',
+      )
+      await expect(
+        db.query("select private.ensure_customer_profile($1,'Fake')", [kitchen]),
+      ).rejects.toThrow(/permission denied/)
+      await expect(
+        db.query(
+          "insert into public.customer_profiles(kitchen_id,display_name) values($1,'Fake')",
+          [kitchen],
+        ),
+      ).rejects.toThrow(/permission denied/)
+      await expect(
+        db.query('update public.members set customer_profile_id=null where user_id=$1', [stranger]),
+      ).rejects.toThrow(/permission denied/)
+      expect(
+        (
+          await db.query(
+            "update public.customer_profiles set display_name='Hijacked' where display_name='Alex' returning id",
+          )
+        ).rows,
+      ).toHaveLength(0)
+      await expect(db.query('update public.requests set customer_profile_id=null')).rejects.toThrow(
+        /permission denied/,
+      )
+    })
+    await asUser(
+      guest,
+      async () =>
+        await expect(db.query("select public.set_display_name(' BLAIR ')")).rejects.toThrow(
+          'customer_name_taken',
+        ),
+    )
+  })
+})
 describe('unrestricted credential lengths', () => {
   it.each([
     ['one-character', '1', '2'],
@@ -600,6 +823,141 @@ describe('photo permissions', () => {
           `${randomUUID()}/new.webp`,
         ]),
       ).rejects.toThrow(/row-level security/)
+    })
+  })
+})
+
+async function setLanguage(id: string, language: string, initialize = false) {
+  return asUser(
+    id,
+    async () =>
+      (
+        await db.query<{ language: string }>(
+          'select public.set_language_preference($1,$2) language',
+          [language, initialize],
+        )
+      ).rows[0].language,
+  )
+}
+
+describe('profile language preferences', () => {
+  it('remembers each chef/customer preference across sessions, renames and migration reruns', async () => {
+    expect(await setLanguage(chef, 'en')).toBe('en')
+    expect(await setLanguage(guest, 'zh')).toBe('zh')
+    expect(await setLanguage(other, 'en')).toBe('en')
+    await unlock(stranger, code, false, 'alex')
+    expect(await setLanguage(stranger, 'en', true)).toBe('zh')
+    await asUser(guest, () => db.query("select public.set_display_name('Sunny')"))
+    await db.exec(languageMigration)
+    expect(await setLanguage(stranger, 'en', true)).toBe('zh')
+    await asUser(chef, () => db.query('select public.remove_member($1)', [stranger]))
+    await unlock(stranger, password, true, 'chef')
+    expect(await setLanguage(stranger, 'zh', true)).toBe('en')
+    const profiles = (
+      await db.query<{ display_name: string; preferred_language: string }>(
+        'select display_name,preferred_language from public.customer_profiles order by display_name',
+      )
+    ).rows
+    expect(profiles).toEqual([
+      { display_name: 'Blair', preferred_language: 'en' },
+      { display_name: 'Sunny', preferred_language: 'zh' },
+    ])
+  })
+  it('adopts the first chosen language once and later allows an explicit change', async () => {
+    expect(await setLanguage(guest, 'zh', true)).toBe('zh')
+    expect(await setLanguage(guest, 'en', true)).toBe('zh')
+    expect(await setLanguage(guest, 'en')).toBe('en')
+  })
+  it('retains preferences when a code rotation revokes customer sessions', async () => {
+    await setLanguage(guest, 'zh')
+    await asUser(chef, () => db.query("select public.change_access_codes('new-family-code',null)"))
+    await expect(setLanguage(guest, 'en')).rejects.toThrow('not_member')
+    await unlock(guest, 'new-family-code', false, 'Alex')
+    expect(await setLanguage(guest, 'en', true)).toBe('zh')
+  })
+  it('prevents outsiders, invalid languages and changes to another profile', async () => {
+    await expect(setLanguage(stranger, 'zh')).rejects.toThrow('not_member')
+    await expect(setLanguage(guest, 'fr')).rejects.toThrow('invalid_language')
+    await setLanguage(chef, 'en')
+    await setLanguage(other, 'en')
+    await asUser(guest, async () => {
+      expect(
+        (await db.query("update public.chef_profiles set preferred_language='zh' returning id"))
+          .rows,
+      ).toHaveLength(0)
+      expect(
+        (
+          await db.query(
+            "update public.customer_profiles set preferred_language='zh' where display_name='Blair' returning id",
+          )
+        ).rows,
+      ).toHaveLength(0)
+      await expect(
+        db.query(
+          "update public.customer_profiles set preferred_language='fr' where display_name='Alex'",
+        ),
+      ).rejects.toThrow()
+    })
+    expect(await setLanguage(chef, 'zh', true)).toBe('en')
+    expect(await setLanguage(other, 'zh', true)).toBe('en')
+  })
+})
+
+describe('menus with either primary language', () => {
+  it('saves Chinese-only dishes and categories and snapshots them in request history', async () => {
+    await asUser(chef, async () => {
+      await db.query("update public.categories set name='',name_zh='中餐' where id=$1", [category])
+      await db.query(
+        "update public.dishes set name='',name_zh='番茄炒蛋',description='',description_zh='家的味道' where id=$1",
+        [dish],
+      )
+    })
+    const request = await order()
+    expect(request.name).toBe('')
+    expect(
+      (
+        await db.query<{ name_zh: string }>('select name_zh from public.requests where id=$1', [
+          request.id,
+        ])
+      ).rows[0].name_zh,
+    ).toBe('番茄炒蛋')
+    await asUser(chef, async () => {
+      await db.query("select public.set_request_status($1,'completed')", [request.id])
+      await db.query("update public.dishes set name_zh='家常番茄炒蛋' where id=$1", [dish])
+    })
+    expect(
+      (
+        await db.query<{ name_zh: string; status: string }>(
+          'select name_zh,status from public.requests where id=$1',
+          [request.id],
+        )
+      ).rows[0],
+    ).toEqual({ name_zh: '番茄炒蛋', status: 'completed' })
+  })
+  it('still rejects missing names, oversized translations and customer menu edits', async () => {
+    await asUser(chef, async () => {
+      await expect(
+        db.query("update public.dishes set name=' ',name_zh='' where id=$1", [dish]),
+      ).rejects.toThrow()
+      await expect(
+        db.query("update public.categories set name='',name_zh=' ' where id=$1", [category]),
+      ).rejects.toThrow()
+      await expect(
+        db.query("update public.dishes set name='',name_zh=$2 where id=$1", [
+          dish,
+          '菜'.repeat(101),
+        ]),
+      ).rejects.toThrow()
+    })
+    await asUser(guest, async () => {
+      expect(
+        (
+          await db.query(
+            "update public.dishes set name='',name_zh='改名' where id=$1 returning id",
+            [dish],
+          )
+        ).rows,
+      ).toHaveLength(0)
     })
   })
 })

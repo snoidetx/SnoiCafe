@@ -43,8 +43,9 @@ export function validateMenuBackup(input: unknown): MenuBackup {
       (c) =>
         !record(c) ||
         !text(c.id, 100, true) ||
-        !text(c.name, 60, true) ||
+        !text(c.name, 60) ||
         !text(c.name_zh, 60) ||
+        !(String(c.name).trim() || String(c.name_zh).trim()) ||
         !text(c.emoji, 12) ||
         !Number.isSafeInteger(c.position) ||
         Number(c.position) < -2147483648 ||
@@ -58,8 +59,9 @@ export function validateMenuBackup(input: unknown): MenuBackup {
     dishes.some(
       (d) =>
         !record(d) ||
-        !text(d.name, 100, true) ||
+        !text(d.name, 100) ||
         !text(d.name_zh, 100) ||
+        !(String(d.name).trim() || String(d.name_zh).trim()) ||
         !text(d.description, 1000) ||
         !text(d.description_zh, 1000) ||
         typeof d.price !== 'number' ||

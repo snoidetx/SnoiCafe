@@ -187,13 +187,14 @@ export function DishPhoto({
   )
 }
 export function LanguageButton() {
-  const { language, setLanguage, t } = useI18n()
+  const { language, setLanguage, t, languageSaving } = useI18n()
   return (
     <button
       type="button"
       className="language-button"
       onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
       aria-label={t('language')}
+      disabled={languageSaving}
     >
       {language === 'en' ? '中文' : 'EN'}
     </button>

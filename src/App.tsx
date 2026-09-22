@@ -11,10 +11,10 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { I18nContext, errorKey, useI18n } from './i18n'
+import { I18nContext, errorKey, useI18n, type TranslationKey } from './i18n'
 import type { Dish, KitchenData, Language, Repository, Status, Tab } from './types'
 import { supabase } from './lib/supabase'
-import { kitchenPeople } from './lib/domain'
+import { kitchenPeople, memberProfile } from './lib/domain'
 import { Auth } from './components/Auth'
 import { Menu } from './components/Menu'
 import { Requests } from './components/Requests'
@@ -39,19 +39,21 @@ export interface DemoControls {
 export function App({ repository, demo }: { repository?: Repository; demo?: DemoControls }) {
   const [language, setLanguageState] = useState<Language>(() => {
     try {
-      return localStorage.getItem('snoicafe-language') === 'zh' ? 'zh' : 'en'
+      const saved = localStorage.getItem('snoicafe-language')
+      if (saved === 'en' || saved === 'zh') return saved
+      return navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
     } catch {
       return 'en'
     }
   })
-  function setLanguage(value: Language) {
+  const setLanguage = useCallback((value: Language) => {
     setLanguageState(value)
     try {
       localStorage.setItem('snoicafe-language', value)
     } catch {
       /* Language still works without storage. */
     }
-  }
+  }, [])
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
   }, [language])
@@ -62,7 +64,7 @@ export function App({ repository, demo }: { repository?: Repository; demo?: Demo
   )
 }
 function KitchenApp({ repository, demo }: { repository?: Repository; demo?: DemoControls }) {
-  const { t } = useI18n(),
+  const { t, language, setLanguage: setDeviceLanguage } = useI18n(),
     [data, setData] = useState<KitchenData | null>(null),
     [userId, setUserId] = useState(demo?.chefId || '')
   const [loading, setLoading] = useState(true),
@@ -71,6 +73,11 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
   const [tab, setTab] = useState<Tab>('menu'),
     [dialog, setDialog] = useState<Dialog>(null),
     [toast, setToast] = useState('')
+  const [languageSaving, setLanguageSaving] = useState(false),
+    [languageError, setLanguageError] = useState<TranslationKey | ''>('')
+  const languageRef = useRef(language),
+    languageSavingRef = useRef(false)
+  languageRef.current = language
   const requestVersion = useRef(0),
     userRef = useRef(userId),
     toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -89,6 +96,16 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
       }
       const next = id ? await repository.load(id) : null
       if (version !== requestVersion.current) return
+      const profile = next ? memberProfile(next, id) : undefined
+      if (profile && !languageSavingRef.current) {
+        // A first visit adopts the language chosen on the entry screen. Existing
+        // preferences win, including when two devices join at the same time.
+        const chosen =
+          profile.preferred_language || (await repository.saveLanguage(languageRef.current, true))
+        if (version !== requestVersion.current) return
+        profile.preferred_language = chosen
+        setDeviceLanguage(chosen)
+      }
       userRef.current = id
       setUserId(id)
       setData(next?.members.some((m) => m.user_id === id) ? next : null)
@@ -100,7 +117,7 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [repository, demo])
+  }, [repository, demo, setDeviceLanguage])
   useEffect(() => {
     const safeRefresh = () => {
       void refresh().catch(() => {})
@@ -161,6 +178,38 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
       void refresh().catch(() => {})
     }
   }
+  async function changeLanguage(value: Language) {
+    if (!repository || !data || languageSavingRef.current) return
+    const id = userRef.current
+    const profileId = memberProfile(data, id)?.id
+    if (!profileId) return
+    languageSavingRef.current = true
+    setLanguageSaving(true)
+    setLanguageError('')
+    ++requestVersion.current
+    try {
+      const chosen = await repository.saveLanguage(value)
+      if (userRef.current !== id) return
+      ++requestVersion.current
+      setData((current) => {
+        if (!current || memberProfile(current, id)?.id !== profileId) return current
+        const update = (profile: NonNullable<KitchenData['chef_profiles']>[number]) =>
+          profile.id === profileId ? { ...profile, preferred_language: chosen } : profile
+        return {
+          ...current,
+          chef_profiles: current.chef_profiles?.map(update),
+          customer_profiles: current.customer_profiles?.map(update),
+        }
+      })
+      setDeviceLanguage(chosen)
+    } catch (e) {
+      setLanguageError(errorKey(e))
+      setError(errorKey(e))
+    } finally {
+      languageSavingRef.current = false
+      setLanguageSaving(false)
+    }
+  }
   async function signOut() {
     try {
       const result = await supabase!.auth.signOut({ scope: 'local' })
@@ -176,6 +225,7 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
     }
   }
   function switchDemo(id: string) {
+    setLanguageError('')
     demo!.setUser(id)
     userRef.current = id
     setUserId(id)
@@ -206,7 +256,14 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
     chef = me?.role === 'chef',
     pending = data.requests.filter((r) => r.status === 'pending').length
   return (
-    <>
+    <I18nContext.Provider
+      value={{
+        language,
+        setLanguage: (value) => void changeLanguage(value),
+        languageSaving,
+        languageError,
+      }}
+    >
       {demo && (
         <div className="demo-bar">
           <span>{t('demo')}</span>
@@ -300,7 +357,7 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
               requests={data.requests}
               history={tab === 'history'}
               chef={chef}
-              userId={userId}
+              member={me}
               disabled={!online}
               onStatus={status}
               onBrowse={() => setTab('menu')}
@@ -385,6 +442,6 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
           </button>
         </div>
       )}
-    </>
+    </I18nContext.Provider>
   )
 }

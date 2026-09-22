@@ -105,7 +105,7 @@ export function Auth({
             <form onSubmit={submit}>
               <Field
                 label={t(chef ? 'chefName' : 'yourName')}
-                hint={chef ? t('chefNameHelp') : undefined}
+                hint={t(chef ? 'chefNameHelp' : 'customerNameHelp')}
               >
                 <input name="name" required maxLength={60} autoComplete="nickname" />
               </Field>

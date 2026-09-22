@@ -1,4 +1,6 @@
 import type { Dish, KitchenData, Repository } from '../types'
+import { memberProfile, memberProfileId, ownsRequest } from './domain'
+import { photoExtension } from './photos'
 const K = '00000000-0000-4000-8000-000000000001'
 export const DEMO_CHEF = '00000000-0000-4000-8000-000000000002'
 export const DEMO_CUSTOMER = '00000000-0000-4000-8000-000000000003'
@@ -114,6 +116,35 @@ export function createDemoRepository(getUser: () => string): Repository {
   } catch {
     /* Ignore damaged preview storage. */
   }
+  // Upgrade stored previews without discarding their dishes or requests.
+  for (const role of ['chef', 'customer'] as const) {
+    const key = role === 'chef' ? 'chef_profiles' : 'customer_profiles'
+    const profiles = (data[key] ||= [])
+    for (const member of data.members.filter((m) => m.role === role)) {
+      let profile =
+        profiles.find((p) => p.id === memberProfileId(member)) ||
+        profiles.find(
+          (p) => p.display_name.trim().toLowerCase() === member.display_name.trim().toLowerCase(),
+        )
+      if (!profile) {
+        profile = { id: crypto.randomUUID(), kitchen_id: K, display_name: member.display_name }
+        profiles.push(profile)
+      }
+      if (role === 'chef') member.chef_profile_id = profile.id
+      else member.customer_profile_id = profile.id
+    }
+  }
+  for (const request of data.requests) {
+    if (request.customer_profile_id === undefined) {
+      const owner = data.members.find(
+        (m) =>
+          m.user_id === request.created_by &&
+          m.role === 'customer' &&
+          m.display_name.trim().toLowerCase() === request.customer_name.trim().toLowerCase(),
+      )
+      request.customer_profile_id = owner?.customer_profile_id || null
+    }
+  }
   const listeners = new Set<() => void>(),
     photos = new Map<string, string>()
   const persist = () => {
@@ -157,8 +188,10 @@ export function createDemoRepository(getUser: () => string): Repository {
         id: crypto.randomUUID(),
         ...input,
         created_by: getUser(),
+        customer_profile_id:
+          data.members.find((m) => m.user_id === getUser())?.customer_profile_id || null,
         customer_name: data.members.find((m) => m.user_id === getUser())?.display_name || 'Alex',
-        name: dish?.name || input.name,
+        name: dish ? dish.name : input.name,
         name_zh: dish?.name_zh || '',
         price: dish?.price || 0,
         status: 'pending',
@@ -170,7 +203,13 @@ export function createDemoRepository(getUser: () => string): Repository {
     async status(id, status) {
       const r = data.requests.find((r) => r.id === id)
       if (!r) throw new Error('invalid_request')
-      if (status === 'cancelled' && r.created_by === getUser()) {
+      if (
+        status === 'cancelled' &&
+        ownsRequest(
+          r,
+          data.members.find((m) => m.user_id === getUser()),
+        )
+      ) {
       } else requireChef()
       r.status = status
       r.completed_at = status === 'completed' ? now() : null
@@ -178,7 +217,7 @@ export function createDemoRepository(getUser: () => string): Repository {
     },
     async upload(kitchenId, file) {
       requireChef()
-      const path = `${kitchenId}/${crypto.randomUUID()}.webp`
+      const path = `${kitchenId}/${crypto.randomUUID()}.${photoExtension(file)}`
       const value = await new Promise<string>((resolve, reject) => {
         const r = new FileReader()
         r.onload = () => resolve(String(r.result))
@@ -216,27 +255,28 @@ export function createDemoRepository(getUser: () => string): Repository {
     async saveName(userId, name) {
       if (userId !== getUser()) throw new Error('not_allowed')
       const current = data.members.find((m) => m.user_id === userId)
-      const identity = (m: typeof current) => m?.display_name.trim().toLowerCase()
+      if (!current) throw new Error('not_member')
+      const profiles = (current.role === 'chef' ? data.chef_profiles : data.customer_profiles) || []
+      const id = memberProfileId(current)
       if (
-        current?.role === 'chef' &&
-        data.members.some(
-          (m) =>
-            m.role === 'chef' &&
-            identity(m) !== identity(current) &&
-            identity(m) === name.trim().toLowerCase(),
+        profiles.some(
+          (p) => p.id !== id && p.display_name.trim().toLowerCase() === name.trim().toLowerCase(),
         )
       )
-        throw new Error('chef_name_taken')
+        throw new Error(current.role === 'chef' ? 'chef_name_taken' : 'customer_name_taken')
+      const profile = profiles.find((p) => p.id === id)
+      if (profile) profile.display_name = name
       data.members = data.members.map((m) =>
-        (
-          current?.role === 'chef'
-            ? m.role === 'chef' && identity(m) === identity(current)
-            : m.user_id === userId
-        )
-          ? { ...m, display_name: name }
-          : m,
+        m.role === current.role && memberProfileId(m) === id ? { ...m, display_name: name } : m,
       )
       persist()
+    },
+    async saveLanguage(language, onlyIfUnset = false) {
+      const profile = memberProfile(data, getUser())
+      if (!profile) throw new Error('not_member')
+      if (!onlyIfUnset || !profile.preferred_language) profile.preferred_language = language
+      persist()
+      return profile.preferred_language!
     },
     async exportData() {
       requireChef()

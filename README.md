@@ -8,7 +8,7 @@ A tiny kitchen for your favorite people. A cute, mobile-first family menu in **E
 
 - Customers open **one kitchen link**, enter a **nickname + kitchen code**, and start ordering. No email, Google sign-in, or account creation screen.
 - The chef uses a **separate private password** and can change both codes in Settings.
-- Photo uploads, bilingual dish names/descriptions, fun coin prices, custom categories, options such as Hot / Cold, availability, and archive/restore.
+- Photo uploads (including iPhone HEIC/HEIF, converted privately on your device), bilingual dish names/descriptions, fun coin prices, custom categories, options such as Hot / Cold, availability, and archive/restore.
 - Menu orders and freeform dish wishes share a wishlist. Chefs serve requests; customers cancel their own pending requests. History retains the original dish name, price, options, and requester.
 - Private photo storage and database authorization. The frontend is public; family content requires verified kitchen access.
 - Portable JSON backups containing photos, plus menu import. One kitchen per installation.
@@ -34,7 +34,7 @@ The chef does this once. Family members only need the link and kitchen code afte
 
 1. Create your own project at [Supabase](https://supabase.com/).
 2. Under **Authentication → Sign In / Providers**, enable **Anonymous Sign-Ins** and save. This is required for chef and customer entry, even though neither needs an account. It creates a device session behind the scenes; your family will never need an email account or sign-in link. Email and Google providers are not needed.
-3. In the SQL Editor, run [the initial database migration](supabase/migrations/202609220001_kitchen.sql), then [the access-code update](supabase/migrations/202609220002_unrestricted_credentials.sql), then [the chef-profile update](supabase/migrations/202609220003_chef_profiles.sql), in that order. The first script runs once on a fresh project; the two updates can be re-run safely. They create the tables, authorization rules, functions, and private `dish-photos` bucket. If you already ran the initial migration, run the access-code update followed by the chef-profile update before continuing.
+3. In the SQL Editor, run [the initial database migration](supabase/migrations/202609220001_kitchen.sql), then [the access-code update](supabase/migrations/202609220002_unrestricted_credentials.sql), then [the chef-profile update](supabase/migrations/202609220003_chef_profiles.sql), then [the customer-profile update](supabase/migrations/202609220004_customer_profiles.sql), then [the language update](supabase/migrations/202609220005_language_preferences.sql), in that order. The first script runs once on a fresh project; the updates can be re-run safely. They create the tables, authorization rules, functions, and private `dish-photos` bucket. If you already ran the initial migration, run the remaining updates in numeric order before continuing.
 4. In a separate SQL Editor query, initialize your kitchen. **Replace both example values before running** and keep your actual passwords out of GitHub:
 
    ```sql
@@ -97,7 +97,17 @@ If you see a code-length error, run [202609220002_unrestricted_credentials.sql](
 
 Run [202609220003_chef_profiles.sql](supabase/migrations/202609220003_chef_profiles.sql) after the access-code update, then deploy the updated app. It groups existing chef sessions with the same name into one persistent family profile, preserving all passwords, memberships, menus, and order history. It is safe to re-run.
 
-Signing in with the same chef name resumes that profile on another device; capitalization and surrounding spaces are ignored. Different names identify different family chefs, all using this kitchen's chef password. A name by itself never grants chef access. In Settings, changing your chef name renames your profile on every device; a name already used by another chef cannot be taken by renaming. Old orders retain the name recorded when they were placed. **Chef device sessions** lets you end individual sessions while retaining the family profiles. Customer sessions and their order ownership remain separate.
+Signing in with the same chef name resumes that profile on another device; capitalization and surrounding spaces are ignored. Different names identify different family chefs, all using this kitchen's chef password. A name by itself never grants chef access. In Settings, changing your chef name renames your profile on every device; a name already used by another chef cannot be taken by renaming. Old orders retain the name recorded when they were placed. **Device sessions** lets you end individual sessions while retaining the family profiles. The next update extends named profiles to customers too.
+
+### Returning customers
+
+Run [202609220004_customer_profiles.sql](supabase/migrations/202609220004_customer_profiles.sql) after 001–003, then deploy the updated app. Same-name customer sessions become one persistent customer profile (ignoring capitalization and surrounding spaces). Returning with that name and the kitchen code resumes the profile; different names remain different customers. Chef and customer profiles are separate even when names match, and only the chef password grants chef privileges.
+
+New menu orders and freeform wishes store their customer's stable profile ID. Customers can cancel their own pending requests from any device using that profile. Renaming updates the profile's current sessions without changing historical names or ownership. Switching to another profile—even on the original device—does not transfer request ownership. A rename cannot take an existing customer name.
+
+The migration links older requests when the original customer's membership and recorded name still match. Older requests with no identifiable customer membership remain in history with their original device ownership; chefs can still manage them. The migration never guesses request ownership from a historical name alone, and repeating it does not reassign requests.
+
+As with chef names, this is a shared-code family identity model: someone who knows the kitchen code can return as a named customer. The member list and headcount count each profile once. Device sessions remain individually revocable, and code changes revoke sessions while retaining profiles and order history.
 
 ## Sign-in troubleshooting
 
@@ -105,7 +115,7 @@ A wrong kitchen code or chef password produces a specific mismatch message. A se
 
 - **Anonymous Sign-Ins disabled:** In Supabase, open **Authentication → Sign In / Providers**, enable **Anonymous Sign-Ins**, and save. The app needs a device session before it can check either access code. Keep new user sign-ups allowed too.
 - **Connection key rejected:** Check that `.env.local` contains the Project URL and publishable key from the same project, then restart `pnpm dev`. Use the public key; never a secret key.
-- **Database setup incomplete:** Check that all three SQL migrations completed in that same project. Only run the initial migration on a fresh database.
+- **Database setup incomplete:** Check that all four SQL migrations completed in that same project. Only run the initial migration on a fresh database.
 - **Chef password mismatch:** Use the `p_chef_password` value from kitchen setup, or follow [password recovery](#backups-and-recovery). This is separate from your Supabase account and database passwords.
 - **Other sign-in errors:** Share the displayed step and error reference. The app does not include passwords, tokens, or raw database error details in that message.
 
@@ -115,8 +125,8 @@ A wrong kitchen code or chef password produces a specific mismatch message. A se
 - **Chef:** select Manage to edit dishes; use Categories to add, rename, reorder, or delete categories. Deleting a category moves its dishes to Other dishes. Archive hides a dish while keeping its history.
 - **Language:** switch between English and Chinese in the header. Add an optional Chinese name/description to dishes and categories. Without a translation, the original name is shown. Custom option names/values are entered by the chef and are not machine-translated.
 - **Code changes:** Open the header settings button → Kitchen access, enter a new kitchen code, chef password, or both, and select **Update access codes**. Leave either field blank to keep that value. After the initial database setup/update, changes are made entirely in the app. Only chefs can see and use these controls. Changing the kitchen code ends existing customer memberships. They must enter the new code. Changing the chef password ends other chef memberships and preserves the current chef session.
-- **Chef profiles:** the Family & friends list and headcount show each named chef once, even when they use multiple devices. Chef names are family identifiers; everyone who knows the chef password can enter as one of those names.
-- **Sessions:** a browser remembers your nickname and access. A different device, signing out, or clearing browser data starts a new session. The chef can end old sessions. Completed requests keep their names and history. After starting a new session, customers cannot cancel requests from their previous session; the chef can manage them.
+- **Family profiles:** the Family & friends list and headcount show each named chef or customer once, even across multiple devices. Names identify profiles within their role. Entry still requires the appropriate kitchen code or chef password.
+- **Sessions:** a browser remembers your nickname and access. A different device, signing out, or clearing browser data starts a new session. The chef can end old sessions. Completed requests keep their names and history. Returning to the same customer profile restores control of its pending requests across devices. Older requests that could not be linked during migration retain original-device ownership; chefs can manage those.
 - **Privacy:** anyone with the kitchen code can join. To keep someone out, change the code and share it only with the remaining family. Ending one session alone does not stop someone who still knows the code from joining again. Access revocation is enforced immediately by the database; an already-open page clears its displayed content on its next refresh (at most 30 seconds while visible and online).
 
 ## Backups and recovery
@@ -152,3 +162,15 @@ Tests run the migration in PostgreSQL with minimal local Auth/Storage scaffoldin
 React + TypeScript + Vite, Supabase, Lucide icons. No analytics, payments, external font services, or public dish-image URLs. The site requires an internet connection for shared kitchen data; it has no offline caching of private content. This is a web app that can be opened from a phone's home-screen shortcut, not an offline PWA.
 
 Licensed under [MIT](LICENSE). The kitchen banner is an original generated illustration; see [asset notes](docs/assets.md).
+
+### Photo uploads
+
+Choose a photo directly from your iPhone library or from your files. HEIC/HEIF, JPG, PNG, and WebP are supported, up to **20 MB** per original. The app prepares a preview, resizes to a maximum 1200px edge, and uploads a compressed image under 2 MB. Wait for the preview before saving. No third-party conversion service receives your photo.
+
+HEIC fallback decoding uses [heic-to](https://github.com/hoppergee/heic-to), distributed under LGPL-3.0-or-later. See [third-party notices](public/licenses/README.md) for source and license copies.
+
+### Your language
+
+Choose **English** or **简体中文** in Settings, or use the language button at the top. The choice is saved for your named chef/customer profile and restored on other devices. Your first visit uses the language selected on the entry screen; before any choice, the app follows your browser language. Chef and customer profiles have independent preferences, even when their names match.
+
+When adding or editing a dish/category, the current app language appears first and its name is required. The other language is optional. Descriptions remain optional, with the primary description shown first. Menu items without a translation display their available name/description in either interface language. Existing content is preserved. Existing installations must run migration **005**, after **004**, and redeploy for these changes.

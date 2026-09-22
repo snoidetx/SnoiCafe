@@ -110,12 +110,20 @@ export const en = {
   cancel: 'Cancel',
   dishName: 'Dish name',
   chineseName: 'Chinese name (optional)',
+  englishName: 'English name (optional)',
+  englishDescription: 'English description (optional)',
+  languageHelp: 'Saved for your profile and remembered on your other devices.',
   description: 'Description',
   chineseDescription: 'Chinese description (optional)',
   category: 'Category',
   price: 'Price in kitchen coins',
   photo: 'Dish photo',
-  photoHelp: 'JPG, PNG or WebP, up to 10 MB. We’ll compress it for you.',
+  photoHelp:
+    'iPhone HEIC/HEIF, JPG, PNG or WebP, up to 20 MB. We’ll convert and compress it for you.',
+  processingPhoto: 'Preparing your photo…',
+  photoTooLarge: 'This photo is over 20 MB. Choose a smaller photo.',
+  photoUnreadable:
+    'We couldn’t read this photo. Try again, or export it as a JPG and choose that copy.',
   photoRequired: 'Add a photo for this dish.',
   choosePhoto: 'Choose a photo',
   replacePhoto: 'Replace photo',
@@ -155,6 +163,18 @@ export const en = {
   endChefSessionConfirm:
     'Sign this chef session out? The chef profile and other devices will remain.',
   customer: 'Customer',
+  customerNameHelp:
+    'Use the same name to return to your family profile and pending requests on another device.',
+  customerProfileHelp:
+    'Changing your name updates this profile on all your devices. Use the new name next time you join.',
+  customer_name_taken:
+    'That customer name already exists. Join with that name to use the existing profile, or choose a different name.',
+  deviceSessions: 'Device sessions ({n})',
+  deviceSessionsHelp:
+    'Family profiles can use several devices. Ending a session keeps the profile, requests, and other devices.',
+  deviceSession: 'Session {id}',
+  endDeviceSessionConfirm:
+    'Sign this device session out? The family profile, requests, and other devices will remain.',
   copied: 'Link copied',
   signOut: 'Sign out',
   signIn: 'Come on in',
@@ -172,7 +192,7 @@ export const en = {
   invalid_request: 'Please check the request details.',
   invalid_name: 'Please enter your name.',
   invalidOptions: 'Use one unique option group per line: Temperature: Hot, Cold',
-  invalidPhoto: 'Use a JPG, PNG or WebP under 10 MB. Try a smaller image if needed.',
+  invalidPhoto: 'Choose a HEIC, HEIF, JPG, PNG or WebP photo.',
   orderFailed: 'Your request wasn’t sent. Please try again.',
   emptyName: 'Please enter a name.',
   demo: 'Preview kitchen · changes stay on this device',
@@ -315,12 +335,18 @@ export const zh: Record<TranslationKey, string> = {
   cancel: '取消',
   dishName: '菜品名称',
   chineseName: '中文名称（选填）',
+  englishName: '英文名称（选填）',
+  englishDescription: '英文介绍（选填）',
+  languageHelp: '为你的个人资料保存语言偏好，换设备后也会记住。',
   description: '菜品介绍',
   chineseDescription: '中文介绍（选填）',
   category: '分类',
   price: '价格（厨币）',
   photo: '菜品照片',
-  photoHelp: '支持 JPG、PNG、WebP，最大 10 MB。我们会自动压缩。',
+  photoHelp: '支持 iPhone HEIC/HEIF、JPG、PNG、WebP，最大 20 MB。我们会自动转换并压缩。',
+  processingPhoto: '正在处理照片…',
+  photoTooLarge: '这张照片超过 20 MB，请选择小一些的照片。',
+  photoUnreadable: '无法读取这张照片。请重试，或导出为 JPG 后重新选择。',
   photoRequired: '给这道菜配张照片吧。',
   choosePhoto: '选择照片',
   replacePhoto: '更换照片',
@@ -355,6 +381,13 @@ export const zh: Record<TranslationKey, string> = {
   chefDevice: '会话 {id}',
   endChefSessionConfirm: '退出这个主厨会话？主厨资料与其他设备将保留。',
   customer: '食客',
+  customerNameHelp: '使用相同名称，可在另一台设备回到你的家庭资料并管理待制作的心愿。',
+  customerProfileHelp: '改名会同步到这个资料的所有设备，下次加入时请使用新名称。',
+  customer_name_taken: '这个食客名称已存在。请用该名称重新加入以使用原有资料，或选择其他名称。',
+  deviceSessions: '设备会话（{n}）',
+  deviceSessionsHelp: '家人可以在多台设备登录。结束会话不会删除资料、心愿，也不影响其他设备。',
+  deviceSession: '会话 {id}',
+  endDeviceSessionConfirm: '退出这个设备会话？家庭资料、心愿与其他设备将保留。',
   copied: '链接已复制',
   signOut: '退出登录',
   signIn: '欢迎回家吃饭',
@@ -372,7 +405,7 @@ export const zh: Record<TranslationKey, string> = {
   invalid_request: '请检查点单信息。',
   invalid_name: '请填写你的名字。',
   invalidOptions: '每行一组不重复的选项，例如：温度：热，冰',
-  invalidPhoto: '请选择 10 MB 以内的 JPG、PNG 或 WebP 图片，必要时换张小一些的。',
+  invalidPhoto: '请选择 HEIC、HEIF、JPG、PNG 或 WebP 照片。',
   orderFailed: '心愿没有发出去，请重试。',
   emptyName: '请填写名称。',
   demo: '预览厨房 · 修改仅保存在当前设备',
@@ -421,6 +454,8 @@ export function translate(
 export const I18nContext = createContext<{
   language: Language
   setLanguage: (value: Language) => void
+  languageSaving?: boolean
+  languageError?: TranslationKey | ''
 }>({ language: 'en', setLanguage: () => {} })
 export function useI18n() {
   const context = useContext(I18nContext)
