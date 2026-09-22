@@ -20,6 +20,24 @@ export const en = {
   changeCodes: 'Update access codes',
   codeConfirm: 'Changing access codes will end other affected sessions. Continue?',
   invalid_code: 'That code doesn’t match. Please try again.',
+  invalidChefPassword: 'That chef password doesn’t match. Use the password set for this kitchen.',
+  anonymousSignInsDisabled:
+    'The kitchen owner needs to enable Anonymous Sign-Ins in Supabase → Authentication → Sign In / Providers, save, then try again.',
+  signupsDisabled:
+    'New device sign-ins are disabled. The kitchen owner needs to allow new users to sign up in Supabase Authentication settings.',
+  signInRateLimited: 'Too many device sign-in attempts. Please wait a few minutes and try again.',
+  signInCaptchaFailed:
+    'The sign-in security check failed. The kitchen owner needs to check the Supabase CAPTCHA configuration.',
+  backendKeyInvalid:
+    'The kitchen connection key was rejected. The owner needs to check the Project URL and publishable key in .env.local, then restart pnpm dev.',
+  databaseSetupIncomplete:
+    'The kitchen database setup is incomplete. The owner needs to check that the setup SQL scripts ran in the connected Supabase project.',
+  signInSessionStage: 'starting your device session',
+  signInCodeStage: 'checking your kitchen access',
+  signInMenuStage: 'loading your menu',
+  signInFailedAt:
+    'Could not finish sign-in while {stage} (error: {code}). Please share this message for troubleshooting.',
+  unknownErrorCode: 'unavailable',
   rate_limited: 'Too many attempts. Please wait 15 minutes and try again.',
   kitchen_not_ready: 'The owner still needs to initialize the kitchen.',
   empty_credential: 'Enter a password or kitchen code. It cannot be empty.',
@@ -122,6 +140,20 @@ export const en = {
   yourName: 'Your name',
   people: 'Family & friends',
   chef: 'Chef',
+  chefName: 'Chef name',
+  chefNameHelp:
+    'Use the same name to return to your family chef profile. A different name creates another chef profile.',
+  chefProfileHelp:
+    'Changing your chef name updates this profile on all your devices. Use the new name next time you join.',
+  chef_name_taken:
+    'That chef name already exists. Join with that name to use the existing profile, or choose a different name.',
+  chefDevices: 'Chef device sessions ({n})',
+  chefDevicesHelp:
+    'A chef can be signed in on several devices. Ending a session keeps the chef profile and other devices.',
+  thisDevice: 'This device',
+  chefDevice: 'Session {id}',
+  endChefSessionConfirm:
+    'Sign this chef session out? The chef profile and other devices will remain.',
   customer: 'Customer',
   copied: 'Link copied',
   signOut: 'Sign out',
@@ -196,6 +228,22 @@ export const zh: Record<TranslationKey, string> = {
   changeCodes: '更新访问口令',
   codeConfirm: '更新口令后，其他相关会话将退出。确定继续吗？',
   invalid_code: '口令不对哦，请再试一次。',
+  invalidChefPassword: '主厨密码不匹配，请使用为这个厨房设置的主厨密码。',
+  anonymousSignInsDisabled:
+    '请厨房主人在 Supabase → Authentication → Sign In / Providers 中开启 Anonymous Sign-Ins，保存后重试。',
+  signupsDisabled:
+    '当前禁止新设备登录，请厨房主人在 Supabase Authentication 设置中允许新用户注册。',
+  signInRateLimited: '设备登录尝试过于频繁，请过几分钟再试。',
+  signInCaptchaFailed: '登录安全验证失败，请厨房主人检查 Supabase 的 CAPTCHA 配置。',
+  backendKeyInvalid:
+    '厨房连接密钥被拒绝，请主人检查 .env.local 中的 Project URL 和 publishable key，然后重新运行 pnpm dev。',
+  databaseSetupIncomplete:
+    '厨房数据库设置尚未完成，请主人确认已在当前连接的 Supabase 项目中执行设置 SQL 脚本。',
+  signInSessionStage: '创建此设备的会话',
+  signInCodeStage: '验证厨房访问权限',
+  signInMenuStage: '加载菜单',
+  signInFailedAt: '登录未完成：{stage}时出错（错误代码：{code}）。请提供此消息以便排查。',
+  unknownErrorCode: '未提供',
   rate_limited: '尝试次数较多，请 15 分钟后再试。',
   kitchen_not_ready: '厨房主人还需要完成初始化。',
   empty_credential: '请输入密码或厨房口令，不能留空。',
@@ -297,6 +345,15 @@ export const zh: Record<TranslationKey, string> = {
   yourName: '你的名字',
   people: '家人和朋友',
   chef: '主厨',
+  chefName: '主厨名称',
+  chefNameHelp: '使用相同名称即可回到原来的家庭主厨资料；不同名称会创建另一位主厨。',
+  chefProfileHelp: '修改主厨名称会同步到这个资料的所有设备，下次加入时请使用新名称。',
+  chef_name_taken: '这个主厨名称已存在。请用该名称重新加入以使用原有资料，或选择其他名称。',
+  chefDevices: '主厨设备会话（{n}）',
+  chefDevicesHelp: '每位主厨可以在多台设备登录。结束会话不会删除主厨资料，也不影响其他设备。',
+  thisDevice: '当前设备',
+  chefDevice: '会话 {id}',
+  endChefSessionConfirm: '退出这个主厨会话？主厨资料与其他设备将保留。',
   customer: '食客',
   copied: '链接已复制',
   signOut: '退出登录',
@@ -378,7 +435,26 @@ export function errorKey(error: unknown): TranslationKey {
     error instanceof Error
       ? error.message
       : String((error as { message?: string })?.message || error)
-  if (message in en) return message as TranslationKey
+  if (Object.hasOwn(en, message)) return message as TranslationKey
+  const code = (error as { code?: unknown } | null)?.code
+  switch (code) {
+    case 'anonymous_provider_disabled':
+      return 'anonymousSignInsDisabled'
+    case 'signup_disabled':
+      return 'signupsDisabled'
+    case 'over_request_rate_limit':
+      return 'signInRateLimited'
+    case 'captcha_failed':
+      return 'signInCaptchaFailed'
+    case 'PGRST202':
+    case 'PGRST205':
+      return 'databaseSetupIncomplete'
+  }
+  // Older Auth responses may provide only a message rather than a code.
+  if (/anonymous sign-ins are disabled/i.test(message)) return 'anonymousSignInsDisabled'
+  if (/signups? (?:are |is )?not allowed|signups? (?:are |is )?disabled/i.test(message))
+    return 'signupsDisabled'
+  if (/invalid api key|no api key found/i.test(message)) return 'backendKeyInvalid'
   const known = [
     'not_member',
     'not_allowed',
@@ -391,4 +467,19 @@ export function errorKey(error: unknown): TranslationKey {
     known.find((k) => message.includes(k)) ||
     (/fetch|network|offline|Failed to send/i.test(message) ? 'networkError' : 'error')
   )
+}
+
+// Only expose standard database codes or HTTP status, never arbitrary server
+// messages, SQL details, submitted passwords, or authentication tokens.
+export function errorReference(error: unknown): string | undefined {
+  const value = error as { code?: unknown; status?: unknown } | null
+  if (typeof value?.code === 'string' && /^(?:[A-Z0-9]{5}|PGRST[0-9]{3})$/.test(value.code))
+    return value.code
+  if (
+    typeof value?.status === 'number' &&
+    Number.isInteger(value.status) &&
+    value.status >= 400 &&
+    value.status <= 599
+  )
+    return `HTTP ${value.status}`
 }

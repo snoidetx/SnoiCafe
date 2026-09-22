@@ -6,7 +6,7 @@ One installation is one kitchen. GitHub Pages serves static React/Vite assets. S
 
 1. A visitor enters a nickname and kitchen code, or selects chef mode and supplies the chef password.
 2. Supabase creates an anonymous device session if needed. Anonymous sessions use the `authenticated` database role; that role alone grants **no kitchen access**.
-3. `unlock_kitchen` verifies versioned bcrypt-based hashes inside a non-exposed `private` schema and creates the verified session's membership. Customers cannot write memberships or roles directly.
+3. `unlock_kitchen` verifies versioned bcrypt-based hashes inside a non-exposed `private` schema and creates the verified session's membership. After successful chef-password verification, it finds or creates the kitchen's chef profile by name (case-insensitive, surrounding spaces trimmed); device memberships reference that stable profile. Customers cannot write memberships or roles directly.
 4. Row-level security checks membership on every data access. Chef writes require a verified chef role; choosing the chef tab is not authorization.
 5. Code rotation deletes affected memberships. Storage and data queries stop working immediately for those sessions. The frontend also polls every 30 seconds and refreshes on focus/network recovery; Realtime accelerates menu/request changes.
 
@@ -21,7 +21,8 @@ The chef and customers use the same browser client, but database permissions dif
 ## Data rules
 
 - `kitchens`: singleton name and announcement.
-- `members`: per-device nickname and verified role.
+- `chef_profiles`: stable family chef identities, unique by kitchen and normalized name. Only verified chef entry can create or select a profile. Members can read the profiles; a chef can rename only the profile used by their current session.
+- `members`: per-device nickname, verified role, and optional chef-profile reference. Customers remain separate sessions; sharing a nickname does not transfer ownership of pending requests.
 - `categories`: bilingual labels, emoji, order.
 - `dishes`: chef-owned menu metadata, private image path, structured options, availability/archive state.
 - `requests`: immutable dish/price/requester snapshots and selected options. Writes use functions; customers can cancel only their own pending requests. Chef can complete pending, undo completed, and cancel pending requests. Cancelled entries are terminal.
@@ -44,3 +45,9 @@ Apply `202609220002_unrestricted_credentials.sql` after the initial migration, i
 New hashes use a `snoi-v1$` marker, a random bcrypt salt at cost 10, and a printable HMAC-SHA-256 pre-hash of the complete UTF-8 credential keyed by the domain-prefixed bcrypt salt. Only the 64-character hex digest enters bcrypt, so long Unicode inputs are not truncated. This uses the salt-keyed pre-hash approach described in [Passlib's bcrypt-sha256 documentation](https://passlib.readthedocs.io/en/stable/lib/passlib.hash.bcrypt_sha256.html) with an application-specific encoding. It is not compatible with Passlib's serialized hash format. Neither plaintext credentials nor the intermediate pre-hash are stored.
 
 Existing raw bcrypt hashes remain readable without resetting credentials or sessions. The legacy verification branch rejects candidates above 72 bytes, because the old app could not create such credentials and bcrypt would otherwise truncate a forged suffix. Setting a new credential always writes the new format. Underlying HTTP/database resource limits still apply; the app adds no length policy.
+
+## Named chef profiles
+
+Apply `202609220003_chef_profiles.sql` after 001 and 002. The update backfills existing same-name chefs into a single persistent profile and links their memberships without deleting Auth users or rewriting request history. Returning with the same chef name reuses that profile, and a different name creates another family chef. This is a shared-password family identity model, not individual verified accounts: the chef password is required for every new chef session, and its holders can select any chef name.
+
+A unique index handles concurrent profile creation. Renaming through `set_display_name` updates that profile's current sessions through a trigger; it cannot take a name already held by another chef. Direct member edits cannot change the profile reference. Ending sessions or rotating the chef password revokes device access while preserving profiles. The UI counts profiles rather than chef sessions and keeps per-device revocation in a separate Settings disclosure. Customer session identity and order authorization stay unchanged.

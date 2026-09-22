@@ -1776,3 +1776,18 @@ button:active:not(:disabled) {
     transition: none !important;
   }
 }
+
+.chef-sessions {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f6f5ed;
+}
+.chef-sessions summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chef-sessions .field-help {
+  margin-top: 10px;
+}

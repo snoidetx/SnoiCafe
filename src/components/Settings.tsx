@@ -13,7 +13,7 @@ import type { KitchenData, Repository } from '../types'
 import { errorKey, useI18n } from '../i18n'
 import { appUrl } from '../lib/supabase'
 import { downloadBackup, restoreMenu } from '../lib/repository'
-import { localized } from '../lib/domain'
+import { kitchenPeople, localized } from '../lib/domain'
 import { Field, FormError, Modal } from './Shared'
 export function Settings({
   data,
@@ -39,7 +39,9 @@ export function Settings({
     [error, setError] = useState(''),
     [showLink, setShowLink] = useState(false)
   const me = data.members.find((m) => m.user_id === userId),
-    chef = me?.role === 'chef'
+    chef = me?.role === 'chef',
+    people = kitchenPeople(data),
+    chefSessions = data.members.filter((m) => m.role === 'chef')
   async function run(action: () => Promise<void>, message?: string) {
     setBusy(true)
     setError('')
@@ -95,7 +97,10 @@ export function Settings({
     >
       <FormError message={error} />
       <form onSubmit={profile}>
-        <Field label={t('yourName')}>
+        <Field
+          label={t(chef ? 'chefName' : 'yourName')}
+          hint={chef ? t('chefProfileHelp') : undefined}
+        >
           <input name="display_name" maxLength={60} required defaultValue={me?.display_name} />
         </Field>
         {chef && (
@@ -124,21 +129,21 @@ export function Settings({
           {t('people')}
         </h3>
         <div className="members-list">
-          {data.members.map((m) => (
-            <div key={m.user_id}>
+          {people.map((m) => (
+            <div key={m.id}>
               <span className="member-avatar">{m.display_name.slice(0, 1)}</span>
               <span className="member-name">
                 {m.display_name}
                 <small>{t(m.role)}</small>
               </span>
-              {chef && m.user_id !== userId && (
+              {chef && m.role === 'customer' && m.id !== userId && (
                 <button
                   className="icon-button danger"
                   aria-label={`${t('endSession')} ${m.display_name}`}
                   disabled={busy}
                   onClick={() => {
                     if (confirm(t('endSessionConfirm')))
-                      void run(() => repository.removeMember(m.user_id), t('removed'))
+                      void run(() => repository.removeMember(m.id), t('removed'))
                   }}
                 >
                   <UserMinus size={17} />
@@ -147,6 +152,39 @@ export function Settings({
             </div>
           ))}
         </div>
+        {chef && (
+          <details className="chef-sessions">
+            <summary>{t('chefDevices', { n: chefSessions.length })}</summary>
+            <p className="field-help">{t('chefDevicesHelp')}</p>
+            <div className="members-list">
+              {chefSessions.map((session) => (
+                <div key={session.user_id}>
+                  <span className="member-name">
+                    {session.display_name}
+                    <small>
+                      {session.user_id === userId
+                        ? t('thisDevice')
+                        : t('chefDevice', { id: session.user_id.slice(0, 8) })}
+                    </small>
+                  </span>
+                  {session.user_id !== userId && (
+                    <button
+                      className="icon-button danger"
+                      aria-label={`${t('endSession')} ${session.display_name} ${session.user_id.slice(0, 8)}`}
+                      disabled={busy}
+                      onClick={() => {
+                        if (confirm(t('endChefSessionConfirm')))
+                          void run(() => repository.removeMember(session.user_id), t('removed'))
+                      }}
+                    >
+                      <UserMinus size={17} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </section>
       {chef && (
         <>

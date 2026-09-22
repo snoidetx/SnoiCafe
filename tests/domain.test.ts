@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { parseOptions, localized, filterDishes } from '../src/lib/domain'
+import { parseOptions, localized, filterDishes, kitchenPeople } from '../src/lib/domain'
 import { en, zh, translate } from '../src/i18n'
-import type { Dish } from '../src/types'
+import type { Dish, KitchenData } from '../src/types'
 describe('bilingual menu', () => {
   it('keeps every UI string translated and interpolates both languages', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
@@ -29,5 +29,43 @@ describe('bilingual menu', () => {
     ])
     for (const value of ['Temp: Hot, Hot', 'Temp: Hot\nTemp: Cold', 'missing delimiter', ' : Hot'])
       expect(() => parseOptions(value)).toThrow('invalidOptions')
+  })
+})
+
+describe('people and chef devices', () => {
+  it('counts named chef profiles once, including offline chefs, and never merges customer names', () => {
+    const data = {
+      kitchen: { id: 'k', name: 'Kitchen', announcement: '' },
+      chef_profiles: [
+        { id: 'snoi', kitchen_id: 'k', display_name: 'Snoi' },
+        { id: 'grandma', kitchen_id: 'k', display_name: 'Grandma' },
+      ],
+      members: [
+        {
+          kitchen_id: 'k',
+          user_id: 'phone',
+          display_name: 'Snoi',
+          role: 'chef',
+          chef_profile_id: 'snoi',
+        },
+        {
+          kitchen_id: 'k',
+          user_id: 'laptop',
+          display_name: 'Snoi',
+          role: 'chef',
+          chef_profile_id: 'snoi',
+        },
+        { kitchen_id: 'k', user_id: 'alex1', display_name: 'Alex', role: 'customer' },
+        { kitchen_id: 'k', user_id: 'alex2', display_name: 'Alex', role: 'customer' },
+      ],
+      categories: [],
+      dishes: [],
+      requests: [],
+    } satisfies KitchenData
+    const people = kitchenPeople(data)
+    expect(people).toHaveLength(4)
+    expect(people.find((p) => p.id === 'snoi')?.sessions).toHaveLength(2)
+    expect(people.find((p) => p.id === 'grandma')?.sessions).toHaveLength(0)
+    expect(people.filter((p) => p.role === 'customer')).toHaveLength(2)
   })
 })
