@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { Category, Repository } from '../types'
 import { useI18n, errorKey } from '../i18n'
-import { localized, orderedCategories } from '../lib/domain'
+import { localized, localizedNames, orderedCategories } from '../lib/domain'
 import { Field, FormError, Modal } from './Shared'
+import { BilingualFields } from './BilingualFields'
 export function Categories({
   categories,
   kitchenId,
@@ -41,13 +42,11 @@ export function Categories({
     e.preventDefault()
     const values = new FormData(e.currentTarget)
     void run(async () => {
-      const name = String(values.get('name') || '').trim()
-      if (!name) throw new Error('emptyName')
+      const names = localizedNames(values, language)
       await repository.saveCategory({
         id: editing?.id || crypto.randomUUID(),
         kitchen_id: kitchenId,
-        name,
-        name_zh: String(values.get('name_zh') || '').trim(),
+        ...names,
         emoji: String(values.get('emoji') || '🍽️'),
         position: editing?.position ?? (sorted.at(-1)?.position ?? -1) + 1,
       })
@@ -123,17 +122,10 @@ export function Categories({
       </div>
       <form key={formKey} onSubmit={submit} className="settings-section">
         <h3>{editing ? t('edit') : t('addCategory')}</h3>
-        <div className="emoji-name">
-          <Field label={t('emoji')}>
-            <input name="emoji" maxLength={12} defaultValue={editing?.emoji || '🍽️'} required />
-          </Field>
-          <Field label={t('categoryName')}>
-            <input name="name" maxLength={60} required defaultValue={editing?.name} />
-          </Field>
-        </div>
-        <Field label={t('categoryChinese')}>
-          <input name="name_zh" maxLength={60} defaultValue={editing?.name_zh} />
+        <Field label={t('emoji')}>
+          <input name="emoji" maxLength={12} defaultValue={editing?.emoji || '🍽️'} required />
         </Field>
+        <BilingualFields value={editing || undefined} kind="category" />
         <FormError message={error} />
         <button className="primary-button full" disabled={busy}>
           {editing ? <Check size={17} /> : <Plus size={17} />} {busy ? t('saving') : t('save')}

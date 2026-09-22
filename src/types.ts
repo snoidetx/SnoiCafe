@@ -12,12 +12,15 @@ export interface Member {
   display_name: string
   role: 'chef' | 'customer'
   chef_profile_id?: string | null
+  customer_profile_id?: string | null
 }
 export interface ChefProfile {
+  preferred_language?: Language | null
   id: string
   kitchen_id: string
   display_name: string
 }
+export type CustomerProfile = ChefProfile
 export interface Category {
   id: string
   kitchen_id: string
@@ -50,6 +53,7 @@ export interface FoodRequest {
   kitchen_id: string
   dish_id: string | null
   created_by: string
+  customer_profile_id?: string | null
   customer_name: string
   name: string
   name_zh: string
@@ -66,6 +70,7 @@ export interface KitchenData {
   kitchen: Kitchen
   members: Member[]
   chef_profiles?: ChefProfile[]
+  customer_profiles?: CustomerProfile[]
   categories: Category[]
   dishes: Dish[]
   requests: FoodRequest[]
@@ -95,6 +100,7 @@ export interface Repository {
   removeMember(userId: string): Promise<void>
   saveKitchen(kitchen: Kitchen): Promise<void>
   saveName(userId: string, name: string): Promise<void>
+  saveLanguage(language: Language, onlyIfUnset?: boolean): Promise<Language>
   exportData(): Promise<unknown>
   subscribe(callback: () => void): () => void
 }

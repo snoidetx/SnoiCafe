@@ -9,7 +9,7 @@ import {
   UserMinus,
   Users,
 } from 'lucide-react'
-import type { KitchenData, Repository } from '../types'
+import type { KitchenData, Language, Repository } from '../types'
 import { errorKey, useI18n } from '../i18n'
 import { appUrl } from '../lib/supabase'
 import { downloadBackup, restoreMenu } from '../lib/repository'
@@ -34,14 +34,14 @@ export function Settings({
   notify: (text: string) => void
   demo: boolean
 }) {
-  const { t, language } = useI18n(),
+  const { t, language, setLanguage, languageSaving, languageError } = useI18n(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [showLink, setShowLink] = useState(false)
   const me = data.members.find((m) => m.user_id === userId),
     chef = me?.role === 'chef',
     people = kitchenPeople(data),
-    chefSessions = data.members.filter((m) => m.role === 'chef')
+    deviceSessions = data.members
   async function run(action: () => Promise<void>, message?: string) {
     setBusy(true)
     setError('')
@@ -96,10 +96,21 @@ export function Settings({
       }}
     >
       <FormError message={error} />
+      <Field label={t('language')} hint={t('languageHelp')}>
+        <select
+          value={language}
+          disabled={busy || languageSaving}
+          onChange={(e) => setLanguage(e.target.value as Language)}
+        >
+          <option value="en">English</option>
+          <option value="zh">简体中文</option>
+        </select>
+      </Field>
+      <FormError message={languageError ? t(languageError) : ''} />
       <form onSubmit={profile}>
         <Field
           label={t(chef ? 'chefName' : 'yourName')}
-          hint={chef ? t('chefProfileHelp') : undefined}
+          hint={t(chef ? 'chefProfileHelp' : 'customerProfileHelp')}
         >
           <input name="display_name" maxLength={60} required defaultValue={me?.display_name} />
         </Field>
@@ -136,35 +147,22 @@ export function Settings({
                 {m.display_name}
                 <small>{t(m.role)}</small>
               </span>
-              {chef && m.role === 'customer' && m.id !== userId && (
-                <button
-                  className="icon-button danger"
-                  aria-label={`${t('endSession')} ${m.display_name}`}
-                  disabled={busy}
-                  onClick={() => {
-                    if (confirm(t('endSessionConfirm')))
-                      void run(() => repository.removeMember(m.id), t('removed'))
-                  }}
-                >
-                  <UserMinus size={17} />
-                </button>
-              )}
             </div>
           ))}
         </div>
         {chef && (
           <details className="chef-sessions">
-            <summary>{t('chefDevices', { n: chefSessions.length })}</summary>
-            <p className="field-help">{t('chefDevicesHelp')}</p>
+            <summary>{t('deviceSessions', { n: deviceSessions.length })}</summary>
+            <p className="field-help">{t('deviceSessionsHelp')}</p>
             <div className="members-list">
-              {chefSessions.map((session) => (
+              {deviceSessions.map((session) => (
                 <div key={session.user_id}>
                   <span className="member-name">
-                    {session.display_name}
+                    {session.display_name} · {t(session.role)}
                     <small>
                       {session.user_id === userId
                         ? t('thisDevice')
-                        : t('chefDevice', { id: session.user_id.slice(0, 8) })}
+                        : t('deviceSession', { id: session.user_id.slice(0, 8) })}
                     </small>
                   </span>
                   {session.user_id !== userId && (
@@ -173,7 +171,7 @@ export function Settings({
                       aria-label={`${t('endSession')} ${session.display_name} ${session.user_id.slice(0, 8)}`}
                       disabled={busy}
                       onClick={() => {
-                        if (confirm(t('endChefSessionConfirm')))
+                        if (confirm(t('endDeviceSessionConfirm')))
                           void run(() => repository.removeMember(session.user_id), t('removed'))
                       }}
                     >

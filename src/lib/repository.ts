@@ -1,6 +1,7 @@
 import type {
   Category,
   ChefProfile,
+  CustomerProfile,
   Dish,
   FoodRequest,
   Kitchen,
@@ -9,7 +10,7 @@ import type {
   Repository,
 } from '../types'
 import { supabase } from './supabase'
-import { preparePhoto } from './domain'
+import { photoExtension, preparePhoto } from './photos'
 import { validateMenuBackup } from './backup'
 
 export function createRepository(): Repository {
@@ -39,17 +40,20 @@ export function createRepository(): Repository {
     async load(userId) {
       const kitchen = check(await db.from('kitchens').select('*').maybeSingle()) as Kitchen | null
       if (!kitchen) return null
-      const [members, categories, dishes, requests, chef_profiles] = await Promise.all([
-        rows<Member>('members', kitchen.id),
-        rows<Category>('categories', kitchen.id),
-        rows<Dish>('dishes', kitchen.id),
-        rows<FoodRequest>('requests', kitchen.id),
-        rows<ChefProfile>('chef_profiles', kitchen.id),
-      ])
+      const [members, categories, dishes, requests, chef_profiles, customer_profiles] =
+        await Promise.all([
+          rows<Member>('members', kitchen.id),
+          rows<Category>('categories', kitchen.id),
+          rows<Dish>('dishes', kitchen.id),
+          rows<FoodRequest>('requests', kitchen.id),
+          rows<ChefProfile>('chef_profiles', kitchen.id),
+          rows<CustomerProfile>('customer_profiles', kitchen.id),
+        ])
       return {
         kitchen,
         members,
         chef_profiles,
+        customer_profiles,
         categories,
         dishes,
         requests: requests.sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -81,11 +85,11 @@ export function createRepository(): Repository {
       check(await db.rpc('set_request_status', { p_id: id, p_status: status }))
     },
     async upload(kitchenId, file) {
-      const path = `${kitchenId}/${crypto.randomUUID()}.webp`
+      const path = `${kitchenId}/${crypto.randomUUID()}.${photoExtension(file)}`
       check(
         await db.storage
           .from('dish-photos')
-          .upload(path, file, { contentType: 'image/webp', cacheControl: '0', upsert: false }),
+          .upload(path, file, { contentType: file.type, cacheControl: '0', upsert: false }),
       )
       return path
     },
@@ -124,6 +128,14 @@ export function createRepository(): Repository {
     },
     async saveName(userId, name) {
       check(await db.rpc('set_display_name', { p_name: name }))
+    },
+    async saveLanguage(language, onlyIfUnset = false) {
+      return check(
+        await db.rpc('set_language_preference', {
+          p_language: language,
+          p_only_if_unset: onlyIfUnset,
+        }),
+      )
     },
     async exportData() {
       const auth = await db.auth.getUser()
@@ -176,6 +188,8 @@ export async function downloadBackup(repo: Repository) {
     dishes: data.dishes,
     requests: data.requests,
     members: data.members,
+    chef_profiles: data.chef_profiles,
+    customer_profiles: data.customer_profiles,
     photos,
   }
 }

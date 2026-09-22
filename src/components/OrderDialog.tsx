@@ -34,7 +34,7 @@ export function OrderDialog({
       const selected_options = Object.fromEntries(
         (dish?.options || []).map((o, i) => [o.name, String(form.get(`option-${i}`) || '')]),
       )
-      const name = dish?.name || String(form.get('name') || '').trim()
+      const name = dish ? localized(dish, language) : String(form.get('name') || '').trim()
       if (!name) throw new Error('emptyName')
       await repository.order({
         kitchen_id: kitchenId,

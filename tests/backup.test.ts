@@ -37,3 +37,15 @@ it('rejects invalid shapes, remote images, bad categories, and malformed options
   ])
     expect(() => validateMenuBackup(value)).toThrow('invalidBackup')
 })
+
+it('backs up Chinese-only dishes/categories and rejects names missing in both languages', () => {
+  const data = archive()
+  data.categories[0].name = ''
+  data.dishes[0].name = ''
+  expect(validateMenuBackup(data).dishes[0].name_zh).toBe('茶')
+  data.dishes[0].name_zh = ' '
+  expect(() => validateMenuBackup(data)).toThrow('invalidBackup')
+  data.dishes[0].name_zh = '茶'
+  data.categories[0].name_zh = ''
+  expect(() => validateMenuBackup(data)).toThrow('invalidBackup')
+})

@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { Check, Clock3, Heart, RotateCcw, X } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { localized } from '../lib/domain'
-import type { FoodRequest, Status } from '../types'
+import { localized, ownsRequest } from '../lib/domain'
+import type { FoodRequest, Member, Status } from '../types'
 import { Empty } from './Shared'
 export function Requests({
   requests,
   history,
   chef,
-  userId,
+  member,
   onStatus,
   onBrowse,
   disabled,
@@ -16,7 +16,7 @@ export function Requests({
   requests: FoodRequest[]
   history: boolean
   chef: boolean
-  userId: string
+  member?: Member
   onStatus: (id: string, status: Status) => Promise<void>
   onBrowse: () => void
   disabled: boolean
@@ -104,7 +104,7 @@ export function Requests({
                   }).format(new Date(r.created_at))}
                 </time>
                 <div>
-                  {r.status === 'pending' && (chef || r.created_by === userId) && (
+                  {r.status === 'pending' && (chef || ownsRequest(r, member)) && (
                     <button
                       className="text-button muted"
                       onClick={() => void status(r, 'cancelled')}
