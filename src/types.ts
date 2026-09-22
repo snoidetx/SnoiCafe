@@ -92,6 +92,7 @@ export interface Repository {
   deleteCategory(id: string): Promise<void>
   order(input: OrderInput): Promise<void>
   status(id: string, status: Status): Promise<void>
+  deleteRequest(id: string): Promise<void>
   upload(kitchenId: string, file: Blob): Promise<string>
   photo(path: string): Promise<string>
   removePhoto(path: string): Promise<void>

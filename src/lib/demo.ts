@@ -215,6 +215,14 @@ export function createDemoRepository(getUser: () => string): Repository {
       r.completed_at = status === 'completed' ? now() : null
       persist()
     },
+    async deleteRequest(id) {
+      requireChef()
+      const request = data.requests.find((r) => r.id === id)
+      if (!request) return
+      if (request.status !== 'pending') throw new Error('request_not_pending')
+      data.requests = data.requests.filter((r) => r.id !== id)
+      persist()
+    },
     async upload(kitchenId, file) {
       requireChef()
       const path = `${kitchenId}/${crypto.randomUUID()}.${photoExtension(file)}`

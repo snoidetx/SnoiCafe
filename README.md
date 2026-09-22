@@ -9,7 +9,7 @@ A tiny kitchen for your favorite people. A cute, mobile-first family menu in **E
 - Customers open **one kitchen link**, enter a **nickname + kitchen code**, and start ordering. No email, Google sign-in, or account creation screen.
 - The chef uses a **separate private password** and can change both codes in Settings.
 - Photo uploads (including iPhone HEIC/HEIF, converted privately on your device), bilingual dish names/descriptions, fun coin prices, custom categories, options such as Hot / Cold, availability, and archive/restore.
-- Menu orders and freeform dish wishes share a wishlist. Chefs serve requests; customers cancel their own pending requests. History retains the original dish name, price, options, and requester.
+- Menu orders and freeform dish wishes share a wishlist. Chefs serve, cancel, or permanently delete pending requests; customers cancel their own pending requests. History retains the original dish name, price, options, and requester.
 - Private photo storage and database authorization. The frontend is public; family content requires verified kitchen access.
 - Portable JSON backups containing photos, plus menu import. One kitchen per installation.
 
@@ -34,7 +34,7 @@ The chef does this once. Family members only need the link and kitchen code afte
 
 1. Create your own project at [Supabase](https://supabase.com/).
 2. Under **Authentication → Sign In / Providers**, enable **Anonymous Sign-Ins** and save. This is required for chef and customer entry, even though neither needs an account. It creates a device session behind the scenes; your family will never need an email account or sign-in link. Email and Google providers are not needed.
-3. In the SQL Editor, run [the initial database migration](supabase/migrations/202609220001_kitchen.sql), then [the access-code update](supabase/migrations/202609220002_unrestricted_credentials.sql), then [the chef-profile update](supabase/migrations/202609220003_chef_profiles.sql), then [the customer-profile update](supabase/migrations/202609220004_customer_profiles.sql), then [the language update](supabase/migrations/202609220005_language_preferences.sql), in that order. The first script runs once on a fresh project; the updates can be re-run safely. They create the tables, authorization rules, functions, and private `dish-photos` bucket. If you already ran the initial migration, run the remaining updates in numeric order before continuing.
+3. In the SQL Editor, run [the initial database migration](supabase/migrations/202609220001_kitchen.sql), then [the access-code update](supabase/migrations/202609220002_unrestricted_credentials.sql), then [the chef-profile update](supabase/migrations/202609220003_chef_profiles.sql), then [the customer-profile update](supabase/migrations/202609220004_customer_profiles.sql), then [the language update](supabase/migrations/202609220005_language_preferences.sql), then [the wishlist deletion update](supabase/migrations/202609220006_delete_wishlist_requests.sql), in that order. The first script runs once on a fresh project; the updates can be re-run safely. They create the tables, authorization rules, functions, and private `dish-photos` bucket. If you already ran the initial migration, run the remaining updates in numeric order before continuing.
 4. In a separate SQL Editor query, initialize your kitchen. **Replace both example values before running** and keep your actual passwords out of GitHub:
 
    ```sql
@@ -174,3 +174,7 @@ HEIC fallback decoding uses [heic-to](https://github.com/hoppergee/heic-to), dis
 Choose **English** or **简体中文** in Settings, or use the language button at the top. The choice is saved for your named chef/customer profile and restored on other devices. Your first visit uses the language selected on the entry screen; before any choice, the app follows your browser language. Chef and customer profiles have independent preferences, even when their names match.
 
 When adding or editing a dish/category, the current app language appears first and its name is required. The other language is optional. Descriptions remain optional, with the primary description shown first. Menu items without a translation display their available name/description in either interface language. Existing content is preserved. Existing installations must run migration **005**, after **004**, and redeploy for these changes.
+
+### Delete a wishlist item
+
+Chefs can choose **Delete** on a pending wishlist item and confirm its name. This permanently removes that request; it does not move to History or delete its menu dish. **Cancel request** remains available when you want a record in History. Customers cannot delete requests, and completed/cancelled history is protected from this action. Existing installations must run [migration 006](supabase/migrations/202609220006_delete_wishlist_requests.sql) after 005, then redeploy. Applying the migration itself removes no data.

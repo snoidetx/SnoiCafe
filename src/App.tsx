@@ -178,6 +178,19 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
       void refresh().catch(() => {})
     }
   }
+  async function deleteRequest(id: string) {
+    try {
+      await repository!.deleteRequest(id)
+      setData((current) =>
+        current ? { ...current, requests: current.requests.filter((r) => r.id !== id) } : current,
+      )
+      await refresh()
+      notify(t('requestDeleted'))
+    } catch (e) {
+      await refresh().catch(() => {})
+      setError(errorKey(e))
+    }
+  }
   async function changeLanguage(value: Language) {
     if (!repository || !data || languageSavingRef.current) return
     const id = userRef.current
@@ -360,6 +373,7 @@ function KitchenApp({ repository, demo }: { repository?: Repository; demo?: Demo
               member={me}
               disabled={!online}
               onStatus={status}
+              onDelete={deleteRequest}
               onBrowse={() => setTab('menu')}
             />
           )}

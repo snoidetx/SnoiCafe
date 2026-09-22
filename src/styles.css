@@ -5,6 +5,8 @@
   font-synthesis: none;
   font-size: 14px;
   line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   --green: #4b6941;
   --ink: #353d32;
   --muted: #848779;
@@ -32,6 +34,14 @@ input,
 textarea,
 select {
   -webkit-tap-highlight-color: transparent;
+}
+button,
+a,
+summary,
+input[type='checkbox'],
+input[type='radio'] {
+  /* Repeated taps should activate controls, not double-tap zoom. */
+  touch-action: manipulation;
 }
 button {
   cursor: pointer;
@@ -78,6 +88,9 @@ input,
 textarea,
 select {
   max-width: 100%;
+  min-width: 0;
+  /* iPhone Safari zooms small text fields on focus. Keep controls readable. */
+  font-size: 16px;
   color: var(--ink);
 }
 input,
@@ -306,6 +319,9 @@ button:active:not(:disabled) {
   padding: 5px 0;
   font-size: 12px;
   font-weight: 500;
+}
+.text-button.danger {
+  color: #a66245;
 }
 .text-button.muted {
   color: #8c8e83;
@@ -737,7 +753,7 @@ button:active:not(:disabled) {
   gap: 7px;
 }
 .demo-bar select {
-  font-size: 10px;
+  font-size: 16px;
   padding: 3px 7px;
   background: #f8faef;
 }
@@ -972,11 +988,16 @@ button:active:not(:disabled) {
 }
 .request-footer > div {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
 .request-footer .text-button {
-  font-size: 10px;
+  font-size: 12px;
+  min-height: 40px;
+}
+.request-footer .small-button {
+  min-height: 40px;
 }
 /* Forms and sheets */
 .modal {
@@ -1246,7 +1267,7 @@ button:active:not(:disabled) {
   gap: 10px;
 }
 .share-link {
-  font-size: 11px;
+  font-size: 16px;
   margin-top: 12px;
 }
 .file-button {
@@ -1648,7 +1669,7 @@ button:active:not(:disabled) {
     justify-content: space-between;
   }
   .demo-bar select {
-    font-size: 9px;
+    font-size: 16px;
   }
   .requests-page {
     padding: 5px 18px 15px;
@@ -1762,9 +1783,6 @@ button:active:not(:disabled) {
   .category-editor-row button {
     min-width: 25px;
     width: 25px;
-  }
-  .request-footer .text-button {
-    font-size: 9px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

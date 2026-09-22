@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Clock3, Heart, RotateCcw, X } from 'lucide-react'
+import { Check, Clock3, Heart, RotateCcw, Trash2, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { localized, ownsRequest } from '../lib/domain'
 import type { FoodRequest, Member, Status } from '../types'
@@ -10,6 +10,7 @@ export function Requests({
   chef,
   member,
   onStatus,
+  onDelete,
   onBrowse,
   disabled,
 }: {
@@ -18,6 +19,7 @@ export function Requests({
   chef: boolean
   member?: Member
   onStatus: (id: string, status: Status) => Promise<void>
+  onDelete: (id: string) => Promise<void>
   onBrowse: () => void
   disabled: boolean
 }) {
@@ -34,6 +36,16 @@ export function Requests({
     setBusy(r.id)
     try {
       await onStatus(r.id, next)
+    } finally {
+      setBusy('')
+    }
+  }
+  async function remove(r: FoodRequest) {
+    if (!chef || disabled || busy || r.status !== 'pending') return
+    if (!window.confirm(t('deleteRequestConfirm', { name: localized(r, language) }))) return
+    setBusy(r.id)
+    try {
+      await onDelete(r.id)
     } finally {
       setBusy('')
     }
@@ -104,6 +116,17 @@ export function Requests({
                   }).format(new Date(r.created_at))}
                 </time>
                 <div>
+                  {chef && r.status === 'pending' && (
+                    <button
+                      className="text-button danger"
+                      aria-label={`${t('deleteRequest')} ${localized(r, language)}`}
+                      onClick={() => void remove(r)}
+                      disabled={disabled || !!busy}
+                    >
+                      <Trash2 size={14} />
+                      {t('deleteRequest')}
+                    </button>
+                  )}
                   {r.status === 'pending' && (chef || ownsRequest(r, member)) && (
                     <button
                       className="text-button muted"
