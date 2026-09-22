@@ -84,6 +84,9 @@ export function createRepository(): Repository {
     async status(id, status) {
       check(await db.rpc('set_request_status', { p_id: id, p_status: status }))
     },
+    async deleteRequest(id) {
+      check(await db.rpc('delete_wishlist_request', { p_id: id }))
+    },
     async upload(kitchenId, file) {
       const path = `${kitchenId}/${crypto.randomUUID()}.${photoExtension(file)}`
       check(

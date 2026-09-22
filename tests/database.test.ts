@@ -22,6 +22,10 @@ const languageMigration = readFileSync(
   new URL('../supabase/migrations/202609220005_language_preferences.sql', import.meta.url),
   'utf8',
 )
+const deleteRequestMigration = readFileSync(
+  new URL('../supabase/migrations/202609220006_delete_wishlist_requests.sql', import.meta.url),
+  'utf8',
+)
 let upgradedCustomers: {
   profiles: number
   distinctProfiles: number
@@ -168,6 +172,12 @@ beforeAll(async () => {
   }
   await db.exec(languageMigration)
   await db.exec(languageMigration)
+  const existingRequests = (await db.query('select id from public.requests order by id')).rows
+  await db.exec(deleteRequestMigration)
+  await db.exec(deleteRequestMigration)
+  expect((await db.query('select id from public.requests order by id')).rows).toEqual(
+    existingRequests,
+  )
 }, 30000)
 beforeEach(async () => {
   await db.exec(
@@ -959,5 +969,79 @@ describe('menus with either primary language', () => {
         ).rows,
       ).toHaveLength(0)
     })
+  })
+})
+
+describe('chef wishlist deletion', () => {
+  it('permanently removes pending menu orders and custom wishes without deleting the dish', async () => {
+    const menuOrder = await order()
+    const wish = await order(guest, randomUUID(), {}, null)
+    const retained = await order(other)
+    await asUser(chef, async () => {
+      await db.query('select public.delete_wishlist_request($1)', [menuOrder.id])
+      await db.query('select public.delete_wishlist_request($1)', [wish.id])
+      await db.query('select public.delete_wishlist_request($1)', [menuOrder.id])
+    })
+    for (const id of [chef, guest, other]) {
+      await asUser(id, async () => {
+        expect((await db.query('select id from public.requests')).rows).toEqual([
+          { id: retained.id },
+        ])
+        expect((await db.query('select id from public.dishes')).rows).toEqual([{ id: dish }])
+      })
+    }
+  })
+  it('denies customers including the requester, outsiders and revoked chef sessions', async () => {
+    const request = await order()
+    for (const id of [guest, other, stranger]) {
+      await asUser(id, async () => {
+        await expect(
+          db.query('select public.delete_wishlist_request($1)', [request.id]),
+        ).rejects.toThrow('not_allowed')
+        await expect(
+          db.query('delete from public.requests where id=$1', [request.id]),
+        ).rejects.toThrow(/permission denied/)
+      })
+    }
+    await unlock(stranger, password, true, 'chef')
+    await asUser(chef, () => db.query('select public.remove_member($1)', [stranger]))
+    await asUser(stranger, async () => {
+      await expect(
+        db.query('select public.delete_wishlist_request($1)', [request.id]),
+      ).rejects.toThrow('not_allowed')
+    })
+    expect((await db.query('select id from public.requests')).rows).toEqual([{ id: request.id }])
+  })
+  it('keeps completed and cancelled history when a stale wishlist attempts deletion', async () => {
+    for (const status of ['completed', 'cancelled']) {
+      const request = await order()
+      await asUser(chef, async () => {
+        await db.query('select public.set_request_status($1,$2)', [request.id, status])
+        await expect(
+          db.query('select public.delete_wishlist_request($1)', [request.id]),
+        ).rejects.toThrow('request_not_pending')
+        await expect(
+          db.query('delete from public.requests where id=$1', [request.id]),
+        ).rejects.toThrow(/permission denied/)
+      })
+      expect(
+        (
+          await db.query<{ status: string }>('select status from public.requests where id=$1', [
+            request.id,
+          ])
+        ).rows[0].status,
+      ).toBe(status)
+    }
+  })
+  it('does not expose deletion to the public anonymous role', async () => {
+    const request = await order()
+    await db.exec('set role anon')
+    try {
+      await expect(
+        db.query('select public.delete_wishlist_request($1)', [request.id]),
+      ).rejects.toThrow(/permission denied/)
+    } finally {
+      await db.exec('reset role')
+    }
   })
 })

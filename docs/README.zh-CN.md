@@ -20,7 +20,7 @@ pnpm dev:demo
 只有厨房主人需要完成以下步骤，之后家人直接打开链接即可。
 
 1. 在 [Supabase](https://supabase.com/) 创建项目，在 Authentication → Sign In / Providers 开启 **Anonymous Sign-Ins（匿名登录）**。这是后台的设备会话，家人不需要注册账号。
-2. 在 SQL Editor 中依次运行 [初始数据库脚本](../supabase/migrations/202609220001_kitchen.sql) 、[访问口令更新脚本](../supabase/migrations/202609220002_unrestricted_credentials.sql) 、[主厨资料更新脚本](../supabase/migrations/202609220003_chef_profiles.sql) 、[食客资料更新脚本](../supabase/migrations/202609220004_customer_profiles.sql) 和 [语言偏好更新脚本](../supabase/migrations/202609220005_language_preferences.sql)。初始脚本只在空项目运行一次；若已经执行过，按编号顺序运行尚未执行的更新脚本即可。
+2. 在 SQL Editor 中依次运行 [初始数据库脚本](../supabase/migrations/202609220001_kitchen.sql) 、[访问口令更新脚本](../supabase/migrations/202609220002_unrestricted_credentials.sql) 、[主厨资料更新脚本](../supabase/migrations/202609220003_chef_profiles.sql) 、[食客资料更新脚本](../supabase/migrations/202609220004_customer_profiles.sql) 、[语言偏好更新脚本](../supabase/migrations/202609220005_language_preferences.sql) 和 [心愿删除更新脚本](../supabase/migrations/202609220006_delete_wishlist_requests.sql)。初始脚本只在空项目运行一次；若已经执行过，按编号顺序运行尚未执行的更新脚本即可。
 3. 另开一个 SQL 查询，替换下面两个示例值后运行：
 
    ```sql
@@ -116,3 +116,9 @@ HEIC 转换使用 [heic-to](https://github.com/hoppergee/heic-to)，相关许可
 添加或编辑菜品、分类时，当前语言的名称在前且为必填，另一语言为选填。菜品介绍仍可留空，当前语言的介绍优先显示。没有翻译时，菜单会使用已有的名称和介绍，不会显示空白。
 
 已有用户需先运行 **004**，再在 Supabase SQL Editor 运行[语言更新 005](../supabase/migrations/202609220005_language_preferences.sql)，然后重新部署网页。此更新会保留已有菜单和历史记录。
+
+## 删除心愿
+
+主厨可在待制作心愿上选择“删除”，确认后永久移除该条心愿，不保留历史记录，也不会删除菜单中的菜品。如需保留历史，请使用“取消点单”。食客不能删除心愿；已完成或已取消的历史记录不能通过此功能删除。
+
+已有用户需在 005 后运行[更新脚本 006](../supabase/migrations/202609220006_delete_wishlist_requests.sql)，然后重新部署。仅执行更新脚本不会删除任何数据。

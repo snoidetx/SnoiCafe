@@ -27,7 +27,7 @@ The chef and customers use the same browser client, but database permissions dif
 - `requests.customer_profile_id`: server-stamped customer ownership that survives device changes and renames; chef requests and unlinked legacy requests retain original-device attribution.
 - `categories`: bilingual labels, emoji, order.
 - `dishes`: chef-owned menu metadata, private image path, structured options, availability/archive state.
-- `requests`: immutable dish/price/requester snapshots and selected options. Writes use functions; customers can cancel only their own pending requests. Chef can complete pending, undo completed, and cancel pending requests. Cancelled entries are terminal.
+- `requests`: immutable dish/price/requester snapshots and selected options. Writes use functions; customers can cancel only their own pending requests. Chef can complete pending, undo completed, cancel pending requests, and explicitly delete pending wishlist requests. Cancelled entries are terminal.
 - `private.access_secrets`: versioned credential hashes (and legacy bcrypt hashes). `private.unlock_attempts`: device attempt windows. Neither is readable by a browser.
 
 `place_request` validates every option against the current dish, snapshots its current price/name, and uses a `(created_by, client_id)` unique key for safe retries. Archiving dishes and ending sessions do not erase request history.
@@ -67,3 +67,9 @@ Names are family identifiers, not individually verified accounts. A holder of th
 Migration `202609220005_language_preferences.sql` adds a nullable `preferred_language` (`en` or `zh`) to both profile tables. Existing profile RLS restricts updates to the current member's profile; the invoker RPC `set_language_preference` exposes no arbitrary target ID. First-visit initialization uses an atomic “only if unset” update, so joining from another device does not overwrite an established preference. Explicit Settings/header changes update the profile. Refresh restores it, while pre-entry language also has a device-local fallback. Profile renames, ended sessions, and code rotation retain the preference.
 
 English `name` and Chinese `name_zh` remain separate fields. Dishes, categories and request snapshots require at least one nonblank name; existing length limits remain. The editor requires the current interface language's name and presents the other translation as optional. Descriptions remain optional. Rendering falls back in both directions, and backup/import accepts a name in either language. Chinese-only orders preserve the original Chinese name in history.
+
+## Wishlist deletion and mobile input
+
+Migration `202609220006_delete_wishlist_requests.sql` adds `delete_wishlist_request(uuid)`. The security-definer function uses an empty search path, verifies the caller’s current chef membership, scopes lookup to that kitchen, and locks the request before requiring `pending`. Customers, outsiders and revoked chef sessions cannot call it successfully. Direct table deletion remains unavailable to browser clients. A stale pending card cannot delete a request already moved to History; repeating a successful deletion is harmless. The bilingual UI requires confirmation, then removes the row permanently without touching its dish, photo, or other requests.
+
+Text inputs, textareas and selects use at least 16px text to avoid iPhone focus zoom. Touch controls use `touch-action: manipulation` for repeated taps while retaining pinch zoom, and text sizing stays stable across orientation changes. The viewport stays device-width with initial scale 1, without a maximum-scale cap or disabling user scaling.
