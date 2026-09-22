@@ -219,7 +219,8 @@ export function createDemoRepository(getUser: () => string): Repository {
       requireChef()
       const request = data.requests.find((r) => r.id === id)
       if (!request) return
-      if (request.status !== 'pending') throw new Error('request_not_pending')
+      if (!['pending', 'cancelled'].includes(request.status))
+        throw new Error('request_not_deletable')
       data.requests = data.requests.filter((r) => r.id !== id)
       persist()
     },

@@ -26,6 +26,10 @@ const deleteRequestMigration = readFileSync(
   new URL('../supabase/migrations/202609220006_delete_wishlist_requests.sql', import.meta.url),
   'utf8',
 )
+const cancelledDeletionMigration = readFileSync(
+  new URL('../supabase/migrations/202609230007_delete_cancelled_requests.sql', import.meta.url),
+  'utf8',
+)
 let upgradedCustomers: {
   profiles: number
   distinctProfiles: number
@@ -175,6 +179,8 @@ beforeAll(async () => {
   const existingRequests = (await db.query('select id from public.requests order by id')).rows
   await db.exec(deleteRequestMigration)
   await db.exec(deleteRequestMigration)
+  await db.exec(cancelledDeletionMigration)
+  await db.exec(cancelledDeletionMigration)
   expect((await db.query('select id from public.requests order by id')).rows).toEqual(
     existingRequests,
   )
@@ -1012,25 +1018,58 @@ describe('chef wishlist deletion', () => {
     })
     expect((await db.query('select id from public.requests')).rows).toEqual([{ id: request.id }])
   })
-  it('keeps completed and cancelled history when a stale wishlist attempts deletion', async () => {
-    for (const status of ['completed', 'cancelled']) {
-      const request = await order()
+  it('keeps completed history when a stale card attempts deletion', async () => {
+    const request = await order()
+    await asUser(chef, async () => {
+      await db.query("select public.set_request_status($1,'completed')", [request.id])
+      await expect(
+        db.query('select public.delete_wishlist_request($1)', [request.id]),
+      ).rejects.toThrow('request_not_deletable')
+      await expect(
+        db.query('delete from public.requests where id=$1', [request.id]),
+      ).rejects.toThrow(/permission denied/)
+    })
+    expect(
+      (
+        await db.query<{ status: string }>('select status from public.requests where id=$1', [
+          request.id,
+        ])
+      ).rows[0].status,
+    ).toBe('completed')
+  })
+  it('upgrades existing cancelled orders and wishes without deleting data until a chef requests it', async () => {
+    await db.exec(deleteRequestMigration)
+    const menuOrder = await order()
+    const wish = await order(guest, randomUUID(), {}, null)
+    const retained = await order(other)
+    for (const request of [menuOrder, wish]) {
+      await asUser(guest, () =>
+        db.query("select public.set_request_status($1,'cancelled')", [request.id]),
+      )
+    }
+    await db.exec(cancelledDeletionMigration)
+    await db.exec(cancelledDeletionMigration)
+    expect((await db.query('select id from public.requests')).rows).toHaveLength(3)
+    for (const request of [menuOrder, wish]) {
+      for (const id of [guest, other, stranger]) {
+        await asUser(id, async () => {
+          await expect(
+            db.query('select public.delete_wishlist_request($1)', [request.id]),
+          ).rejects.toThrow('not_allowed')
+        })
+      }
       await asUser(chef, async () => {
-        await db.query('select public.set_request_status($1,$2)', [request.id, status])
-        await expect(
-          db.query('select public.delete_wishlist_request($1)', [request.id]),
-        ).rejects.toThrow('request_not_pending')
-        await expect(
-          db.query('delete from public.requests where id=$1', [request.id]),
-        ).rejects.toThrow(/permission denied/)
+        await db.query('select public.delete_wishlist_request($1)', [request.id])
+        await db.query('select public.delete_wishlist_request($1)', [request.id])
       })
-      expect(
-        (
-          await db.query<{ status: string }>('select status from public.requests where id=$1', [
-            request.id,
-          ])
-        ).rows[0].status,
-      ).toBe(status)
+    }
+    for (const id of [chef, guest, other]) {
+      await asUser(id, async () => {
+        expect((await db.query('select id from public.requests')).rows).toEqual([
+          { id: retained.id },
+        ])
+        expect((await db.query('select id from public.dishes')).rows).toEqual([{ id: dish }])
+      })
     }
   })
   it('does not expose deletion to the public anonymous role', async () => {
