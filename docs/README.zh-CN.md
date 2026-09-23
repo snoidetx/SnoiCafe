@@ -20,7 +20,7 @@ pnpm dev:demo
 只有厨房主人需要完成以下步骤，之后家人直接打开链接即可。
 
 1. 在 [Supabase](https://supabase.com/) 创建项目，在 Authentication → Sign In / Providers 开启 **Anonymous Sign-Ins（匿名登录）**。这是后台的设备会话，家人不需要注册账号。
-2. 在 SQL Editor 中依次运行 [初始数据库脚本](../supabase/migrations/202609220001_kitchen.sql) 、[访问口令更新脚本](../supabase/migrations/202609220002_unrestricted_credentials.sql) 、[主厨资料更新脚本](../supabase/migrations/202609220003_chef_profiles.sql) 、[食客资料更新脚本](../supabase/migrations/202609220004_customer_profiles.sql) 、[语言偏好更新脚本](../supabase/migrations/202609220005_language_preferences.sql) 、[心愿删除更新脚本](../supabase/migrations/202609220006_delete_wishlist_requests.sql) 和 [已取消心愿删除脚本](../supabase/migrations/202609230007_delete_cancelled_requests.sql)。初始脚本只在空项目运行一次；若已经执行过，按编号顺序运行尚未执行的更新脚本即可。
+2. 打开 [supabase/setup.sql](../supabase/setup.sql)，将**整个文件**复制到 Supabase SQL Editor 的新查询中，使用数据库所有者（默认的 `postgres` 角色）点击 **Run**。一个脚本已包含 **001–007** 的全部更新，会创建数据表、访问规则、函数和私有照片存储桶，**无需逐个运行编号脚本**。任何步骤出错都会回滚本次安装。此脚本仅用于全新项目，会拒绝覆盖已有 SnoiCafe；已有厨房请参照[更新说明](#已有厨房更新)。
 3. 另开一个 SQL 查询，替换下面两个示例值后运行：
 
    ```sql
@@ -55,6 +55,8 @@ pnpm dev:demo
 
 ## 已有厨房更新
 
+`supabase/setup.sql` 仅用于首次安装。已有厨房按文件名顺序运行 [supabase/migrations](../supabase/migrations) 中尚未执行的更新即可。例如，已运行 001–006 时只需运行 007。通过 `setup.sql` 安装的新厨房已经包含 001–007，将来从后续更新开始即可。不要在新版更新之后重复执行旧版更新，否则可能恢复旧的函数或权限。
+
 如果设置口令时出现长度限制错误，请在现有 Supabase 项目的 SQL Editor 中运行 [访问口令更新脚本](../supabase/migrations/202609220002_unrestricted_credentials.sql)，然后刷新更新后的网页。原有密码、口令、会话、菜单和点单都会保留。若首次创建厨房失败，先运行更新脚本，再用自己的密码和口令重试 `bootstrap_kitchen`。不要重新运行初始建表脚本。
 
 ### 重复的主厨记录
@@ -79,7 +81,7 @@ pnpm dev:demo
 
 - **未开启匿名登录：**在 Supabase → Authentication → Sign In / Providers 中启用 **Anonymous Sign-Ins** 并保存，同时允许新用户注册。主厨和食客都需要先创建设备会话才能校验口令，但无需自行注册账号。
 - **连接密钥被拒绝：**确认 `.env.local` 中的 Project URL 与 publishable key 来自同一个项目，然后重新运行 `pnpm dev`。只使用公开密钥。
-- **数据库设置未完成：**确认四个 SQL 脚本都已在所连接的项目执行成功。初始建表脚本只在空数据库运行一次。
+- **数据库设置未完成：**新安装请确认 `supabase/setup.sql` 和单独的 `bootstrap_kitchen` 查询均已在当前连接的项目执行成功。已有厨房只需按顺序补齐更新，不要重新运行 `setup.sql`。
 - **主厨密码不匹配：**使用初始化厨房时的 `p_chef_password`，或按[恢复步骤](../README.md#backups-and-recovery)重置。这与 Supabase 账号密码、数据库密码不同。
 - **其他错误：**提供页面显示的出错步骤与错误代码即可。消息不会显示密码、令牌或原始数据库错误详情。
 
@@ -122,3 +124,7 @@ HEIC 转换使用 [heic-to](https://github.com/hoppergee/heic-to)，相关许可
 主厨可在待制作心愿或“历史”中的已取消心愿上选择“删除”，确认后永久移除该条心愿及其历史记录，不会删除菜单中的菜品。如需保留历史，请使用“取消点单”。食客不能删除心愿；已完成的记录仍不能通过此功能删除。
 
 已有用户需在 006 后运行[更新脚本 007](../supabase/migrations/202609230007_delete_cancelled_requests.sql)，然后重新部署。仅执行更新脚本不会删除任何数据。
+
+## 维护安装脚本
+
+新增或修改数据库迁移后，运行 `pnpm db:setup` 重新生成 `supabase/setup.sql`，并与迁移文件一起提交。不要直接编辑生成文件。`pnpm test` 和 CI 会检查安装脚本是否最新，并验证全新安装、出错回滚和禁止覆盖已有数据。

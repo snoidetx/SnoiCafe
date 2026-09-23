@@ -12,9 +12,10 @@
     "dev:demo": "vite --host 127.0.0.1 --mode demo",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run",
+    "test": "node scripts/build-setup.mjs --check && vitest run",
     "typecheck": "tsc -b",
-    "format": "prettier --write src tests docs *.md *.json *.ts *.html .github/workflows/*.yml"
+    "format": "prettier --write src tests docs scripts *.md *.json *.ts *.html .github/workflows/*.yml",
+    "db:setup": "node scripts/build-setup.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",

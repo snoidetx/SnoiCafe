@@ -2,6 +2,12 @@
 
 One installation is one kitchen. GitHub Pages serves static React/Vite assets. Supabase serves Postgres, private Storage, and Auth. The public landing page is generic and reveals no household data.
 
+## Fresh installation and upgrades
+
+New installations run [`supabase/setup.sql`](../supabase/setup.sql) once, followed by the private `bootstrap_kitchen` query in the README. The setup file bundles the ordered migrations in one transaction and refuses to run when `public.kitchens` already exists, even if no kitchen has been provisioned yet. An error rolls back the installation. Existing kitchens continue to apply only missing migrations in order.
+
+Migration files are the source of truth. After adding or changing one, run `pnpm db:setup` and commit the generated file too. The generator replaces each migration’s outer transaction with one shared transaction; it rejects unexpected wrappers or nested transaction control. `pnpm test` and CI check that the bundle is current and execute it against the local PostgreSQL test schema, alongside the existing incremental-upgrade and RLS tests. The migration-specific sections below describe upgrades for older installations; the fresh installer already includes them.
+
 ## Kitchen-code flow
 
 1. A visitor enters a nickname and kitchen code, or selects chef mode and supplies the chef password.

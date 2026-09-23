@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { supabaseTestSchema } from './helpers/supabase'
 
 // Execute the actual migration in PostgreSQL, with minimal Supabase Auth/Storage scaffolding.
 const db = new PGlite({ extensions: { pgcrypto } })
@@ -86,17 +87,7 @@ async function order(
   })
 }
 beforeAll(async () => {
-  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
-    create schema auth;create table auth.users(id uuid primary key);
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
-    grant usage on schema auth to authenticated,anon;grant execute on function auth.uid() to authenticated,anon;
-    create schema storage;
-    create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
-    create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
-    alter table storage.objects enable row level security;
-    grant usage on schema storage to authenticated,anon;grant select,insert,update,delete on storage.objects to authenticated,anon;
-    create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name,'/') $$;
-  `)
+  await db.exec(supabaseTestSchema)
   await db.exec(
     readFileSync(
       new URL('../supabase/migrations/202609220001_kitchen.sql', import.meta.url),

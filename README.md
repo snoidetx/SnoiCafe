@@ -34,7 +34,7 @@ The chef does this once. Family members only need the link and kitchen code afte
 
 1. Create your own project at [Supabase](https://supabase.com/).
 2. Under **Authentication → Sign In / Providers**, enable **Anonymous Sign-Ins** and save. This is required for chef and customer entry, even though neither needs an account. It creates a device session behind the scenes; your family will never need an email account or sign-in link. Email and Google providers are not needed.
-3. In the SQL Editor, run [the initial database migration](supabase/migrations/202609220001_kitchen.sql), then [the access-code update](supabase/migrations/202609220002_unrestricted_credentials.sql), then [the chef-profile update](supabase/migrations/202609220003_chef_profiles.sql), then [the customer-profile update](supabase/migrations/202609220004_customer_profiles.sql), then [the language update](supabase/migrations/202609220005_language_preferences.sql), then [the wishlist deletion update](supabase/migrations/202609220006_delete_wishlist_requests.sql), then [the cancelled-item deletion update](supabase/migrations/202609230007_delete_cancelled_requests.sql), in that order. The first script runs once on a fresh project; the updates can be re-run safely. They create the tables, authorization rules, functions, and private `dish-photos` bucket. If you already ran the initial migration, run the remaining updates in numeric order before continuing.
+3. Open [supabase/setup.sql](supabase/setup.sql), copy the **entire file** into a new Supabase SQL Editor query, and click **Run** as the database owner (the default `postgres` role). This one script includes all migrations through **007** and creates the tables, access rules, functions, and private `dish-photos` bucket. **Do not run 001–007 separately.** Setup is atomic: an error rolls back the installation. Use it only on a fresh project; it refuses an existing SnoiCafe installation. For an existing kitchen, follow [the upgrade instructions](#updating-an-existing-kitchen).
 4. In a separate SQL Editor query, initialize your kitchen. **Replace both example values before running** and keep your actual passwords out of GitHub:
 
    ```sql
@@ -91,6 +91,8 @@ Supabase provides the database, anonymous device sessions, and private photo sto
 
 ## Updating an existing kitchen
 
+`supabase/setup.sql` is for fresh installations only. Existing kitchens should run only the missing files in [supabase/migrations](supabase/migrations), in filename order. For example, if 001–006 are already applied, run only 007. A new installation using `setup.sql` already includes 001–007; start with later migrations when they are released. Do not replay an older update after a newer one, because it can restore older function definitions or permissions.
+
 If you see a code-length error, run [202609220002_unrestricted_credentials.sql](supabase/migrations/202609220002_unrestricted_credentials.sql) in your existing Supabase project's SQL Editor, then reload the updated app. Existing passwords, kitchen codes, sessions, menus, and orders are preserved. If initial kitchen creation failed, run this update first and retry `bootstrap_kitchen` with your chosen values. Do not rerun the initial table-creation migration.
 
 ### Repeated chef entries
@@ -115,7 +117,7 @@ A wrong kitchen code or chef password produces a specific mismatch message. A se
 
 - **Anonymous Sign-Ins disabled:** In Supabase, open **Authentication → Sign In / Providers**, enable **Anonymous Sign-Ins**, and save. The app needs a device session before it can check either access code. Keep new user sign-ups allowed too.
 - **Connection key rejected:** Check that `.env.local` contains the Project URL and publishable key from the same project, then restart `pnpm dev`. Use the public key; never a secret key.
-- **Database setup incomplete:** Check that all four SQL migrations completed in that same project. Only run the initial migration on a fresh database.
+- **Database setup incomplete:** For a new installation, check that `supabase/setup.sql` and the separate `bootstrap_kitchen` query both succeeded in the connected project. For an existing installation, apply the missing migrations in order; do not rerun `setup.sql`.
 - **Chef password mismatch:** Use the `p_chef_password` value from kitchen setup, or follow [password recovery](#backups-and-recovery). This is separate from your Supabase account and database passwords.
 - **Other sign-in errors:** Share the displayed step and error reference. The app does not include passwords, tokens, or raw database error details in that message.
 
@@ -152,12 +154,15 @@ Then enter through **I'm the chef** with the new password. Do not delete Auth us
 ```sh
 pnpm dev          # real backend from .env.local
 pnpm dev:demo     # local sample kitchen, no backend
-pnpm test         # domain checks + actual PostgreSQL migration/RLS tests via PGlite
+pnpm db:setup     # regenerate the fresh-install SQL after adding/changing migrations
+pnpm test         # check setup.sql is current + PostgreSQL setup/upgrade/RLS and app tests
 pnpm build        # TypeScript + production bundle
 pnpm preview      # serve dist locally
 ```
 
-Tests run the migration in PostgreSQL with minimal local Auth/Storage scaffolding. They cover outsider access, role escalation, code verification/rotation, persisted attempt limits, private photo permissions, validated orders, idempotent retries, and history. They do not replace a smoke test against your live Supabase project after setup.
+Commit the regenerated `supabase/setup.sql` alongside any migration changes. `pnpm test` (also run by CI) fails if that file is missing or outdated.
+
+Tests run both the single-file installer and incremental migrations in PostgreSQL with minimal local Auth/Storage scaffolding. They verify fresh setup, rollback on failure, and protection against reinstalling over existing data. They cover outsider access, role escalation, code verification/rotation, persisted attempt limits, private photo permissions, validated orders, idempotent retries, and history. They do not replace a smoke test against your live Supabase project after setup.
 
 React + TypeScript + Vite, Supabase, Lucide icons. No analytics, payments, external font services, or public dish-image URLs. The site requires an internet connection for shared kitchen data; it has no offline caching of private content. This is a web app that can be opened from a phone's home-screen shortcut, not an offline PWA.
 
